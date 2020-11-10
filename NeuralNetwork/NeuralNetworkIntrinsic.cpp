@@ -3,7 +3,8 @@
 
 /*
 TODO: pushing back to z and a is awful. Needs to be indexable for assigning. Either shape zs and activations when you make
-bias and weights. Or do it at the begining of the train function. Or just make everything arrays. Might be slightly faster
+bias and weights. Or do it at the begining of the train function. Or just make everything arrays. Might be slightly faster.
+Why didn't I do this to start with. So much pain. Also write unit tests dumb dumb
 */
 
 /*
@@ -32,7 +33,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
 
             //biases.push_back(getRandomDoubleVector(targetCount, 1));
 
-            biases.push_back(getDoubleVector(targetCount, .1));
+            biases.push_back(std::vector<double>(targetCount, .1));  //target count .1
 
         }
 
@@ -44,7 +45,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
 
             //biases.push_back(getRandomDoubleVector(neuronCount, 1));
 
-            biases.push_back(getDoubleVector(neuronCount, .1));
+            biases.push_back(std::vector<double>(neuronCount, .1));
 
         }
     }
@@ -67,7 +68,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
             for (int j = 0; j < neuronCount; ++j)
             {
                 //layer.push_back(getRandomDoubleVector(inputCount, 1));
-                layer.push_back(getDoubleVector(inputCount, 1));
+                layer.push_back(std::vector<double>(inputCount, 1));
 
             }
 
@@ -87,7 +88,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
             for (int j = 0; j < targetCount; ++j)
             {
                 //layer.push_back(getRandomDoubleVector(neuronCount, 1));
-                layer.push_back(getDoubleVector(neuronCount, 2));
+                layer.push_back(std::vector<double>(neuronCount, 2));
 
             }
 
@@ -104,7 +105,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
             for (int j = 0; j < neuronCount; ++j)
             {
                 //layer.push_back(getRandomDoubleVector(neuronCount, 1));
-                layer.push_back(getDoubleVector(neuronCount, 3));
+                layer.push_back(std::vector<double>(neuronCount, 3));
 
             }
 
@@ -193,8 +194,6 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
                 activations.push_back(activation);
 
-                std::vector<double> z;
-
                 // z = a * w + a * w + ... + a * w + b
                 
                 // 64-bit double registers
@@ -208,6 +207,8 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
                 for (int layer = 0; layer < hiddenLayerCount; ++layer)
                 {
+                    std::vector<double> z(activation.size(), 0);
+
                     // Need to reset total each layer to normalize all activations
                     __m256d _total = _mm256_setzero_pd();
 
@@ -232,13 +233,19 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
                         _z = _mm256_add_pd(_z, _b);      // z = a * w + b
 
+// I don't know why, but I can't get these lines to work. Am I secretly using linux?
 //#if defined(_WIN64)
-                        z.push_back(_z.m256d_f64[3]);
-                        z.push_back(_z.m256d_f64[2]);
-                        z.push_back(_z.m256d_f64[1]);
-                        z.push_back(_z.m256d_f64[0]);                        
+                        z[neur] = _z.m256d_f64[3];
+                        z[neur + 1] = _z.m256d_f64[2];
+                        z[neur + 2] = _z.m256d_f64[1];
+                        z[neur + 3] = _z.m256d_f64[0];                        
 //#endif
 
+                        // Now we take the 4 z's and apply the activation funcction (relu) to get 4 a's
+                        // The z's in the same layer have no dependency on each other to get it's activation
+                        
+                        // You have done a terrible job commenting this idiot
+                        // Beginning the relu (Good start)
                         // a = max(0, z)
                         // if (z > 0) then a = z
                         // else a = 0
@@ -248,8 +255,15 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                         // if true, then a[true] = |11...11|
                         // if false, then a[false] = |00...00|
                         // logically and _mask1 with _z to get activation
+                        // When you and with all 1's, that block will be the z
+                        // When you and with all 0's, it becomes zero
 
                         _a = _mm256_and_pd(_z, _mask1);
+
+                        // oh god, now we have to worry about normalizing...
+                        // we can either wait till the end and add 4 at a time, then sum the resulting 4
+                        // or we just keep a running total at this point
+                        
 
 
 
@@ -264,7 +278,7 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                     activations.push_back(activation);
                 }
 
-                zs.push_back(z);
+                //zs.push_back(z);
 
                 for (auto zi : zs)
                 {
@@ -276,10 +290,10 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 }
 
                 // Output layer needs different activation function for binary classification (mnist)
-                z = vectorAdd(vectorMatrixMult(weights[totalLayerCount - 1], activation), biases[totalLayerCount - 1]);
-                zs.push_back(z);
+            //    z = vectorAdd(vectorMatrixMult(weights[totalLayerCount - 1], activation), biases[totalLayerCount - 1]);
+            //    zs.push_back(z);
                 // Output layer activation function goes here
-                activation = SoftMax(z);
+            //    activation = SoftMax(z);
                 //std::vector<double> newActivation = relu(z);
                 activations.push_back(activation);
 
@@ -324,12 +338,12 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
                 for (int i = 2; i < totalLayerCount + 1; ++i)
                 {
-                    z = zs[zs.size() - i];
+            //        z = zs[zs.size() - i];
                     //std::vector<double> sp = sigmoidPrime(z);
-                    std::vector<double> sp = reluPrime(z);
+            //        std::vector<double> sp = reluPrime(z);
 
-                    delta = hadamardVector(vectorMatrixMult(matrixTranspose(weights[weights.size() - i + 1]), delta), sp);
-
+            //        delta = hadamardVector(vectorMatrixMult(matrixTranspose(weights[weights.size() - i + 1]), delta), sp);
+            
                     gradientb.push_back(delta);
                     gradientw.push_back(vectorTransposeMult(delta, activations[activations.size() - i - 1]));
                     // deltas.push_back(delta);

@@ -2,6 +2,11 @@
 #include "neuralnetwork.h"
 #include "NeuralNetworkIntrinsic.h"
 #include <fstream>
+#include <immintrin.h>
+#include <random>
+#include <chrono>
+
+
 
 int reverseInt (int i)
 {
@@ -85,9 +90,63 @@ std::vector<double> readMnistLabels(std::string path, int labelCount)
     }
 }
 
+void normalizeSpeedTests()
+{
+    std::srand((unsigned)time(NULL));
+    std::vector<double> test(100000000, ((double)rand() / RAND_MAX) * (10));
+
+    //non avx2
+    auto start = std::chrono::high_resolution_clock::now();
+    double total = 0;
+    for (int i = 0; i < test.size(); ++i)
+    {
+        total += test[i] * test[i];
+    }
+    total = std::sqrt(total);
+    for (int i = 0; i < test.size(); ++i)
+    {
+        test[i] = test[i] / total;
+    }
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto standardDuration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    std::cout << "Normal normal duration: " << standardDuration.count() << std::endl;
+
+    std::vector<double> test2(100000000, ((double)rand() / RAND_MAX) * (10));
+
+    // AVX2 normalization
+    start = std::chrono::high_resolution_clock::now();
+    total = 0;
+    __m256d _temp;
+    __m256d _total = _mm256_setzero_pd();
+    for (int i = 0; i < test2.size(); i += 4)
+    {
+        _temp = _mm256_set_pd(test2[i], test2[i + 1], test2[i + 2], test2[i + 3]);
+        _total = _mm256_fmadd_pd(_temp, _temp, _total);
+    }
+    total = _total.m256d_f64[0] + _total.m256d_f64[1] + _total.m256d_f64[2] + _total.m256d_f64[3];
+    total = std::sqrt(total);
+    for (int i = 0; i < test2.size(); i += 4)
+    {
+        _temp = _mm256_set_pd(test2[i], test2[i + 1], test2[i + 2], test2[i + 3]);
+        _temp = _mm256_sqrt_pd(_temp);
+        test2[i] = _temp.m256d_f64[3];
+        test2[i + 1] = _temp.m256d_f64[2];
+        test2[i + 2] = _temp.m256d_f64[1];
+        test2[i + 3] = _temp.m256d_f64[0];
+    }
+    stop = std::chrono::high_resolution_clock::now();
+    auto avx2Duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    std::cout << "AVX2 normal duration: " << avx2Duration.count() << std::endl;
+    std::cout << "AVX2 is faster by " << standardDuration.count() - avx2Duration.count() << " milliseconds. LETS GOOOOO" << std::endl;
+}
+
+
+
 int main()
 {
+    normalizeSpeedTests();
 
+    /*
     std::vector<std::vector<double>> trainingImages = readMnistImages("D:\\MNIST datasets\\train-images.idx3-ubyte", 60000, 784);
     std::vector<std::vector<double>> testImages = readMnistImages("D:\\MNIST datasets\\t10k-images.idx3-ubyte", 10000, 784);
     std::vector<double> trainingLabels = readMnistLabels("D:\\MNIST datasets\\train-labels.idx1-ubyte", 60000);
@@ -123,6 +182,7 @@ int main()
     //inputs, label, eta, batchsize, epoch
 
     //nn.test(testImages, testLabels);
+    */
 
 
     return 0;
