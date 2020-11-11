@@ -19,12 +19,14 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="GetMnistDatasets.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="neuralnetwork.cpp" />
     <ClCompile Include="NeuralNetworkIntrinsic.cpp" />
     <ClCompile Include="vectoroperations.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="GetMnistDatasets.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="NeuralNetworkIntrinsic.h" />
     <ClInclude Include="vectoroperations.h" />
@@ -83,15 +85,19 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\willi\Documents\SDK\asio-1.18.0\include</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\willi\Documents\SDK\asio-1.18.0\include</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\willi\Documents\SDK\asio-1.18.0\include</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\willi\Documents\SDK\asio-1.18.0\include</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

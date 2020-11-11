@@ -5,6 +5,12 @@
 TODO: pushing back to z and a is awful. Needs to be indexable for assigning. Either shape zs and activations when you make
 bias and weights. Or do it at the begining of the train function. Or just make everything arrays. Might be slightly faster.
 Why didn't I do this to start with. So much pain. Also write unit tests dumb dumb
+UPDATE: Units tests are being janky, need to figure it out. Made everything indexable. Arrays are not faster. Stop doubting 
+people who design this stuff
+TODO: Maybe look into making forward pass a funciton that can take in different types of activations, then making each layer
+an object that hold it's own info, like neuron count, activation function type, etc... I believe that's what pytorch does.
+Seems possibly more readable. Ironically, this is literally the design you built like 3/4 of the way then switched to this
+less modular design. We'll see how that plays out in the long run
 */
 
 /*
@@ -182,6 +188,20 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 // First input to go into the forward pass. Named activation for ease in forward pass
                 std::vector<double> activation = trainInput[currentInput];
 
+                // I'm gonna cheat a little here with normalization. I know every image will have a min of 0, and a
+                // max of 255. So I'm gonna use those for min-max scaling, without having to iterate the whole vector
+                __m256d _temp;
+                __m256d _divisor = _mm256_set1_pd(255.0);
+                for (int i = 0; i < activation.size(); i += 4)
+                {
+                    _temp = _mm256_set_pd(activation[i], activation[i + 1], activation[i + 2], activation[i + 3]);
+                    _temp = _mm256_div_pd(_temp, _divisor);
+                    activation[i] = _temp.m256d_f64[3];
+                    activation[i + 1] = _temp.m256d_f64[2];
+                    activation[i + 2] = _temp.m256d_f64[1];
+                    activation[i + 3] = _temp.m256d_f64[0];
+                }
+
 
                 std::vector<std::vector<double>> zs; // 2D matrix to store all z's. z = weight . activation + b
                 std::vector<std::vector<double>> activations; // 2D matrix to store all activations. activation = acticationFunction(z)
@@ -201,16 +221,24 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
                 __m256d _zero = _mm256_setzero_pd();
 
+                std::vector<double> z;
+                std::vector<double> newActivation;
+
+
                 // Forward pass
                 // Start with hidden layers
                 // Using intrinsic to calculate 4 outputs z, a at once
 
                 for (int layer = 0; layer < hiddenLayerCount; ++layer)
                 {
-                    std::vector<double> z(activation.size(), 0);
+                    // at the start of each new layer, we need a z and newActivation thats as large as the number of neurons in that layers
+                    // note I'm using resize and not assign, this leaves the values the same, but changes size. I think this is
+                    // fine because I'm assigning values later, not pushing. Also I assume resize has to be slightly faster
+                    z.resize(biases[layer].size(), 0);
+                    newActivation.resize(biases[layer].size(), 0);
 
                     // Need to reset total each layer to normalize all activations
-                    __m256d _total = _mm256_setzero_pd();
+                    //__m256d _total = _mm256_setzero_pd();
 
                     for (int neur = 0; neur < weights[layer].size(); neur += 4)
                     {
@@ -261,39 +289,72 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                         _a = _mm256_and_pd(_z, _mask1);
 
                         // oh god, now we have to worry about normalizing...
+                        // so with normalizing, I'm going to wait until the end and only normalize the activations
+                        // since z's will only be used later in reluPrime, which doesn't really matter if it's large or not
+                        //
                         // we can either wait till the end and add 4 at a time, then sum the resulting 4
                         // or we just keep a running total at this point
                         
-
+                        newActivation[neur] = _a.m256d_f64[3];
+                        newActivation[neur + 1] = _a.m256d_f64[2];
+                        newActivation[neur + 2] = _a.m256d_f64[1];
+                        newActivation[neur + 3] = _a.m256d_f64[0];
 
 
                     }
+                    // normalize with AVX2 normalization funciton, I can maybe speed this up later by writing this function in-line
+                    // and keeping a running total of the activations as I make them for the normalization function.
+                    // also look into standardization and using min-max normalization instead
+                    normalizeVectorAVX2(newActivation);
 
-                    //z = vectorAdd(vectorMatrixMult(weights[layer], activation), biases[layer]);
-                 
+                    // use move semantics
+                    activation = std::move(newActivation);
 
-                    //std::vector<double> newActivation = sigmoid(z);
-                    activation = relu(z);
-                    normalizeVector(activation);
                     activations.push_back(activation);
                 }
 
-                //zs.push_back(z);
-
-                for (auto zi : zs)
-                {
-                    for (auto zj : zi)
-                    {
-                        std::cout << zj << ", ";
-                    }
-                    std::cout << std::endl;
-                }
-
                 // Output layer needs different activation function for binary classification (mnist)
-            //    z = vectorAdd(vectorMatrixMult(weights[totalLayerCount - 1], activation), biases[totalLayerCount - 1]);
-            //    zs.push_back(z);
+                // Umm I don't know if using AVX2 on a single layer like this is actually worth it... but let's do it for fun
+                z.resize(biases[totalLayerCount - 1].size(), 0);
+                newActivation.resize(z.size(), 0);
+
+
+                // Solving for 4 neurons at a time, so go 4 neurons at a time through the final layer
+                for (int neur = 0; neur < weights[totalLayerCount - 1].size(); neur += 4)
+                {
+                    _z = _mm256_set1_pd(0.0);          // z = |0|0|0|0|
+
+                    // Go through each value of the weight vector associated with each neuron and take the same position from each vector
+                    for (int values = 0; values < weights[totalLayerCount - 1][neur].size(); ++values)
+                    {
+                        // _w = weights[layer][neuron0,1,2,3][value in neuron]
+                        _w = _mm256_set_pd(weights[totalLayerCount - 1][neur][values], weights[totalLayerCount - 1][neur + 1][values], weights[totalLayerCount - 1][neur + 2][values], weights[totalLayerCount - 1][neur + 3][values]);
+
+                        // _a = |activation0|activation0|activation0|activation0|
+                        _a = _mm256_set1_pd(activation[values]);
+
+                        _z = _mm256_fmadd_pd(_a, _w, _z);  // z = a * w + z
+                    }
+
+                    // _b = |bias0|bias1|bias2|bias3|
+                    _b = _mm256_set_pd(biases[totalLayerCount - 1][neur], biases[totalLayerCount - 1][neur + 1], biases[totalLayerCount - 1][neur + 2], biases[totalLayerCount - 1][neur + 3]);
+
+
+                    _z = _mm256_add_pd(_z, _b);      // z = a * w + b
+
+// I don't know why, but I can't get these lines to work. Am I secretly using linux?
+//#if defined(_WIN64)
+                    z[neur] = _z.m256d_f64[3];
+                    z[neur + 1] = _z.m256d_f64[2];
+                    z[neur + 2] = _z.m256d_f64[1];
+                    z[neur + 3] = _z.m256d_f64[0];
+                }
+//#endif
+                zs.push_back(z);
                 // Output layer activation function goes here
-            //    activation = SoftMax(z);
+                // Oh boy... Softmax with AVX2
+                // 
+                activation = SoftMax(z);
                 //std::vector<double> newActivation = relu(z);
                 activations.push_back(activation);
 
@@ -338,11 +399,11 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
                 for (int i = 2; i < totalLayerCount + 1; ++i)
                 {
-            //        z = zs[zs.size() - i];
+                    z = zs[zs.size() - i];
                     //std::vector<double> sp = sigmoidPrime(z);
-            //        std::vector<double> sp = reluPrime(z);
+                    std::vector<double> sp = reluPrime(z);
 
-            //        delta = hadamardVector(vectorMatrixMult(matrixTranspose(weights[weights.size() - i + 1]), delta), sp);
+                    delta = hadamardVector(vectorMatrixMult(matrixTranspose(weights[weights.size() - i + 1]), delta), sp);
             
                     gradientb.push_back(delta);
                     gradientw.push_back(vectorTransposeMult(delta, activations[activations.size() - i - 1]));
@@ -578,4 +639,27 @@ double NeuralNetworkIntrinsic::crossEntropyLoss(const std::vector<double>& outpu
     }
     double ret = vectorDotProduct(temp, y);
     return (-1.0 / currentBatchSize) * ret;
+}
+
+void NeuralNetworkIntrinsic::normalizeVectorAVX2(std::vector<double>& v)
+{
+    double total = 0;
+    __m256d _temp;
+    __m256d _total = _mm256_setzero_pd();
+    for (int i = 0; i < v.size(); i += 4)
+    {
+        _temp = _mm256_set_pd(v[i], v[i + 1], v[i + 2], v[i + 3]);
+        _total = _mm256_fmadd_pd(_temp, _temp, _total);
+    }
+    total = _total.m256d_f64[0] + _total.m256d_f64[1] + _total.m256d_f64[2] + _total.m256d_f64[3];
+    total = std::sqrt(total);
+    for (int i = 0; i < v.size(); i += 4)
+    {
+        _temp = _mm256_set_pd(v[i], v[i + 1], v[i + 2], v[i + 3]);
+        _temp = _mm256_sqrt_pd(_temp);
+        v[i] = _temp.m256d_f64[3];
+        v[i + 1] = _temp.m256d_f64[2];
+        v[i + 2] = _temp.m256d_f64[1];
+        v[i + 3] = _temp.m256d_f64[0];
+    }
 }

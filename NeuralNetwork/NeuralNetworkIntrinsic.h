@@ -43,6 +43,8 @@ public:
 
     double crossEntropyLoss(const std::vector<double>& output, const std::vector<double>& y);
 
+    void normalizeVectorAVX2(std::vector<double>& v);
+
 private:
     std::vector<std::vector<double>> biases;
     std::vector<std::vector<std::vector<double>>> weights;
