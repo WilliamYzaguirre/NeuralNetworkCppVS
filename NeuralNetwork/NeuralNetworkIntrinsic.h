@@ -48,6 +48,8 @@ public:
 private:
     std::vector<std::vector<double>> biases;
     std::vector<std::vector<std::vector<double>>> weights;
+    std::vector<std::vector<double>> gradientb;
+    std::vector<std::vector<std::vector<double>>> gradientw;
 
     //std::vector<NeuralLayer*> layers;
     int hiddenLayerCount;

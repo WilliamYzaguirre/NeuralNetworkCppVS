@@ -40,6 +40,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
             //biases.push_back(getRandomDoubleVector(targetCount, 1));
 
             biases.push_back(std::vector<double>(targetCount, .1));  //target count .1
+            gradientb.push_back(std::vector<double>(targetCount, 0));
 
         }
 
@@ -52,7 +53,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
             //biases.push_back(getRandomDoubleVector(neuronCount, 1));
 
             biases.push_back(std::vector<double>(neuronCount, .1));
-
+            gradientb.push_back(std::vector<double>(neuronCount, 0));
         }
     }
 
@@ -79,6 +80,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
             }
 
             weights.push_back(layer);
+            gradientw.push_back(layer);
         }
 
         //  Then target layer
@@ -99,6 +101,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
             }
 
             weights.push_back(layer);
+            gradientw.push_back(layer);
         }
         // Otherwise, we give the layer neuronCount vectors of neuronCount size
 
@@ -116,6 +119,7 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
             }
 
             weights.push_back(layer);
+            gradientw.push_back(layer);
         }
     }
 
@@ -207,8 +211,8 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 std::vector<std::vector<double>> activations; // 2D matrix to store all activations. activation = acticationFunction(z)
 
                 // Store the gradient for a single pass, then gets added to total gradients in batch
-                std::vector<std::vector<std::vector<double>>> gradientw;
-                std::vector<std::vector<double>> gradientb;
+                //std::vector<std::vector<std::vector<double>>> gradientw;
+                //std::vector<std::vector<double>> gradientb;
 
                 // std::vector<std::vector<double>> deltas;             // debug
 
@@ -352,8 +356,7 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 //#endif
                 zs.push_back(z);
                 // Output layer activation function goes here
-                // Oh boy... Softmax with AVX2
-                // 
+                // Honestly, for mnist, I know there's only 10 values here, I'm not gonna use AVX2 for this
                 activation = SoftMax(z);
                 //std::vector<double> newActivation = relu(z);
                 activations.push_back(activation);
@@ -389,33 +392,55 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 // std::vector<double> delta = hadamardVector(costDerivative(activations[activations.size() - 1], y), reluPrime(zs[zs.size() - 1]));
 
                 // Use this for softmax and cross entropy
+                // Once again, not worth it to use AVX2
 
                 std::vector<double> delta = vectorSubtract(activations[activations.size() - 1], y);
-                gradientb.push_back(delta);
+                //gradientb.push_back(delta);
+                gradientb[gradientb.size() - 1] = delta;
 
                 // deltas.push_back(delta);
+                // to get weight gradient, simply multiply the last activation layer by delta
+                // Once again, I don't think that's worth it for AVX2
 
-                gradientw.push_back(vectorTransposeMult(delta, activations[activations.size() - 2]));
+                //gradientw.push_back(vectorTransposeMult(delta, activations[activations.size() - 2]));
+                gradientw[gradientw.size() - 1] = vectorTransposeMult(delta, activations[activations.size() - 2]);
 
                 for (int i = 2; i < totalLayerCount + 1; ++i)
                 {
+                    // Now we're working with larger sets of data again, lets get back to the AVX2
+                    // start by iterating through the z's, once again, 4 at a time
+                    // Backprop is a little harder, so let's think about this
+                    // Start by applying reluPrime to z (0 if <= 0, else 1)
+                    // _z = | z[0] | z[1] | z[2] | z[3] |
+                    // _z GT _0 = _mask1
+                    // _mask1 = | 0000 | 1111 | 0000 | 1111 |
+                    // _mask2 = | 0001 | 0001 | 0001 | 0001 |
+                    // _sp = _mask1 and _mask2
+                    // Then get delta
+                    // delta[l] = w[l+1]T*delta[l+1] o activationDerivative(z(L))
+                    // 
+                    // ... We might come back to this after threading
+
                     z = zs[zs.size() - i];
                     //std::vector<double> sp = sigmoidPrime(z);
                     std::vector<double> sp = reluPrime(z);
 
                     delta = hadamardVector(vectorMatrixMult(matrixTranspose(weights[weights.size() - i + 1]), delta), sp);
             
-                    gradientb.push_back(delta);
-                    gradientw.push_back(vectorTransposeMult(delta, activations[activations.size() - i - 1]));
+                    //gradientb.push_back(delta);
+                    gradientb[gradientb.size() - i] = delta;
+                    //gradientw.push_back(vectorTransposeMult(delta, activations[activations.size() - i - 1]));
+                    gradientw[gradientw.size() - i] = vectorTransposeMult(delta, activations[activations.size() - i - 1]);
                     // deltas.push_back(delta);
                 }
 
                 // Reverse them since I stored them in reverse order
-                std::reverse(gradientb.begin(), gradientb.end());
-                std::reverse(gradientw.begin(), gradientw.end());
+                //std::reverse(gradientb.begin(), gradientb.end());
+                //std::reverse(gradientw.begin(), gradientw.end());
 
 
                 // Update the total gradients per batch
+                // I don't think doing this with avx2 would be faster
                 for (int i = 0; i < int(totalBiasGradient.size()); ++i)
                 {
                     for (int j = 0; j < int(totalBiasGradient[i].size()); ++j)
@@ -434,18 +459,19 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                         }
                     }
                 }
-
-
             }
+
+            // I think I can combine the normalizing and updating into one for loop and use AVX2 for gainz
 
             // Normalize the total gradient vectors in a wjole batch
             for (int i = 0; i < int(totalBiasGradient.size()); ++i)
             {
-                // std::vector<double> test = getDoubleVector(totalBiasGradient[i].size(), (1.0/currentBatchSize));
-                // std::vector<double> hadTest = hadamardVector(totalBiasGradient[i], test);
-                //normalizeVector(hadTest);
+                // to start we take the average of the whole batch
+                // _b = | b[i][0] | b[i][1] | b[i][2] | b[i][3] |
+                // _avg = | 1 / batchsize | 1 / batchsize | 1 / batchsize | 1 / batchsize |
+                // _b = 
                 totalBiasGradient[i] = hadamardVector(totalBiasGradient[i], getDoubleVector(totalBiasGradient[i].size(), (1.0 / currentBatchSize)));
-                normalizeVector(totalBiasGradient[i]);
+                normalizeVectorAVX2(totalBiasGradient[i]);
             }
 
             for (int i = 0; i < int(totalWeightGradient.size()); ++i)
@@ -453,7 +479,7 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 for (int j = 0; j < int(totalWeightGradient[i].size()); ++j)
                 {
                     totalWeightGradient[i][j] = hadamardVector(totalWeightGradient[i][j], getDoubleVector(totalWeightGradient[i][j].size(), (1.0 / currentBatchSize)));
-                    normalizeVector(totalWeightGradient[i][j]);
+                    normalizeVectorAVX2(totalWeightGradient[i][j]);
                 }
             }
 
@@ -472,7 +498,7 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 {
                     for (int h = 0; h < int(weights[i][j].size()); ++h)
                     {
-                        weights[i][j][h] = weights[i][j][h] - eta * totalWeightGradient[i][j][h];
+                        weights[i][j][h] -= eta * totalWeightGradient[i][j][h];
                     }
                 }
             }

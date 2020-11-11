@@ -23,6 +23,8 @@ std::vector<std::vector<double>> matrixTranspose(const std::vector<std::vector<d
 
 void normalizeVector(std::vector<double>& v);
 
+void minMaxNormalizeVector(std::vector<double>& v);
+
 std::vector<double> averageVectors(const std::vector<std::vector<double>>& vectors) noexcept;
 
 #endif // VECTOROPERATIONS_H

@@ -7,7 +7,6 @@
 #include <chrono>
 
 
-
 int reverseInt (int i)
 {
     unsigned char c1, c2, c3, c4;
@@ -144,13 +143,11 @@ void normalizeSpeedTests()
 
 int main()
 {
-    normalizeSpeedTests();
 
-    /*
-    std::vector<std::vector<double>> trainingImages = readMnistImages("D:\\MNIST datasets\\train-images.idx3-ubyte", 60000, 784);
-    std::vector<std::vector<double>> testImages = readMnistImages("D:\\MNIST datasets\\t10k-images.idx3-ubyte", 10000, 784);
-    std::vector<double> trainingLabels = readMnistLabels("D:\\MNIST datasets\\train-labels.idx1-ubyte", 60000);
-    std::vector<double> testLabels = readMnistLabels("D:\\MNIST datasets\\t10k-labels.idx1-ubyte", 10000);
+    std::vector<std::vector<double>> trainingImages = readMnistImages("C:\\Users\\willi\\Documents\\MNIST datasets\\train-images.idx3-ubyte", 60000, 784);
+    std::vector<std::vector<double>> testImages = readMnistImages("C:\\Users\\willi\\Documents\\MNIST datasets\\t10k-images.idx3-ubyte", 10000, 784);
+    std::vector<double> trainingLabels = readMnistLabels("C:\\Users\\willi\\Documents\\MNIST datasets\\train-labels.idx1-ubyte", 60000);
+    std::vector<double> testLabels = readMnistLabels("C:\\Users\\willi\\Documents\\MNIST datasets\\t10k-labels.idx1-ubyte", 10000);
 
 
     std::vector<std::vector<double>> input{ {1, 2, 3, 4}, {4, 3, 2, 1} };
@@ -158,31 +155,43 @@ int main()
 
     //int layerCount, int neuronCount, int targetCount, int inputCount
     //NeuralNetworkIntrinsic nni{4, 128, 10, 784};
-    NeuralNetwork nn{ 1, 8, 1, 4 };
-    NeuralNetworkIntrinsic nni{ 1, 8, 1, 4 };
+    NeuralNetwork nn{ 5, 64, 10, 784 };
+    //NeuralNetworkIntrinsic nn1{ 5, 64, 10, 784 };
+    //NeuralNetworkIntrinsic nni{ 1, 8, 1, 4 };
 
 
     std::vector<std::vector<double>> shortTrain;
     std::vector<double> shortLabel;
-    for (int i = 0; i < 500; ++i)
+    std::vector<int> indexes;
+    for (int i = 0; i < 10000; ++i)
     {
-        shortTrain.push_back(trainingImages[i*2]);
-        shortLabel.push_back(trainingLabels[i*2]);
+        indexes.push_back(i);
+    }
+    std::random_shuffle(indexes.begin(), indexes.end());
+    for (auto value : indexes)
+    {
+        shortTrain.push_back(trainingImages[value]);
+        shortLabel.push_back(trainingLabels[value]);
     }
 
 
-
     //nn.printNetwork();
-    //nn.test(testImages, testLabels);
-    //nn.train(shortTrain, shortLabel, .001, 60, 50);
-    nn.train(input, output, .1, 1, 1);
-    nni.train(input, output, .1, 1, 1);
+    nn.test(testImages, testLabels);
+    nn.train(shortTrain, shortLabel, .1, 200, 50);
+    nn.test(testImages, testLabels);
+
+    //nn1.test(testImages, testLabels);
+    //nn1.train(shortTrain, shortLabel, .01, 80, 50);
+    //nn1.test(testImages, testLabels);
+
+
+    //nn.train(input, output, .1, 1, 1);
+    //nni.train(input, output, .1, 1, 1);
 
 
     //inputs, label, eta, batchsize, epoch
 
-    //nn.test(testImages, testLabels);
-    */
+    
 
 
     return 0;

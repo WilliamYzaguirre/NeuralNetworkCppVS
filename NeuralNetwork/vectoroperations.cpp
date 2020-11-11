@@ -158,6 +158,28 @@ void normalizeVector(std::vector<double> &v)
 
 }
 
+void minMaxNormalizeVector(std::vector<double>& v)
+{
+    double max = -100000;
+    double min = 1000000;
+    for (auto value : v)
+    {
+        if (value > max)
+        {
+            max = value;
+        }
+        if (value < min)
+        {
+            min = value;
+        }
+    }
+    double divisor = max - min;
+    for (int i = 0; i < v.size(); ++i)
+    {
+        v[i] = (v[i] - min) / divisor;
+    }
+}
+
 std::vector<double> averageVectors(const std::vector<std::vector<double>>& vectors) noexcept
 {
     std::vector<double> ret;

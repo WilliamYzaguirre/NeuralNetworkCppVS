@@ -70,8 +70,8 @@ NeuralNetwork::NeuralNetwork(int hiddenLayerCount, int neuronCount, int targetCo
 
             for (int j = 0; j < neuronCount; ++j)
             {
-                //layer.push_back(getRandomDoubleVector(inputCount, 1));
-                layer.push_back(getDoubleVector(inputCount, 1));
+                layer.push_back(getRandomDoubleVector(inputCount, 1));
+                //layer.push_back(getDoubleVector(inputCount, 1));
 
             }
 
@@ -90,8 +90,8 @@ NeuralNetwork::NeuralNetwork(int hiddenLayerCount, int neuronCount, int targetCo
 
             for (int j = 0; j < targetCount; ++j)
             {
-                //layer.push_back(getRandomDoubleVector(neuronCount, 1));
-                layer.push_back(getDoubleVector(neuronCount, 2));
+                layer.push_back(getRandomDoubleVector(neuronCount, 1));
+                //layer.push_back(getDoubleVector(neuronCount, 2));
 
             }
 
@@ -107,8 +107,8 @@ NeuralNetwork::NeuralNetwork(int hiddenLayerCount, int neuronCount, int targetCo
 
             for (int j = 0; j < neuronCount; ++j)
             {
-                //layer.push_back(getRandomDoubleVector(neuronCount, 1));
-                layer.push_back(getDoubleVector(neuronCount, 3));
+                layer.push_back(getRandomDoubleVector(neuronCount, 1));
+                //layer.push_back(getDoubleVector(neuronCount, 3));
 
             }
 
@@ -208,6 +208,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
 
                 // First input to go into the forward pass. Named activation for ease in forward pass
                 std::vector<double> activation = trainInput[currentInput];
+                minMaxNormalizeVector(activation);
 
 
                 std::vector<std::vector<double>> zs; // 2D matrix to store all z's. z = weight . activation + b
@@ -226,26 +227,22 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
                 for (int i = 0; i < hiddenLayerCount; ++i)
                 {
                     std::vector<double> z = vectorAdd(vectorMatrixMult(weights[i], activation), biases[i]);
+                    //normalizeVector(z);
+                    //minMaxNormalizeVector(z);
                     zs.push_back(z);
                     //std::vector<double> newActivation = sigmoid(z);
                     std::vector<double> newActivation = relu(z);
-                    normalizeVector(newActivation);
+                    minMaxNormalizeVector(newActivation);
                     activations.push_back(newActivation);
                     activation.clear();
                     activation = newActivation;
                 }
 
-                for (auto zi : zs)
-                {
-                    for (auto zj : zi)
-                    {
-                        std::cout << zj << ", ";
-                    }
-                    std::cout << std::endl;
-                }
+                
 
                 // Output layer needs different activation function for binary classification (mnist)
                 std::vector<double> z = vectorAdd(vectorMatrixMult(weights[totalLayerCount - 1], activation), biases[totalLayerCount - 1]);
+                // There is a significant decrease in learning when you normalize last z. DON'T
                 zs.push_back(z);
                 // Output layer activation function goes here
                 std::vector<double> newActivation = SoftMax(z);
