@@ -1,5 +1,5 @@
 #include "GetMnistDatasets.h"
-
+/*
 GetMnistDatasets::GetMnistDatasets() 
 {
 	asio::error_code ec;
@@ -32,3 +32,4 @@ std::vector<double> GetMnistDatasets::getTestLabels()
 {
 
 }
+*/

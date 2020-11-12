@@ -5,6 +5,7 @@
 #include <immintrin.h>
 #include <random>
 #include <chrono>
+#include "NeuralNetworkThreads.h"
 
 
 int reverseInt (int i)
@@ -151,19 +152,14 @@ int main()
 
 
     std::vector<std::vector<double>> input{ {1, 2, 3, 4}, {4, 3, 2, 1} };
-    std::vector<double> output{ 1, 2 };
-
-    //int layerCount, int neuronCount, int targetCount, int inputCount
-    //NeuralNetworkIntrinsic nni{4, 128, 10, 784};
-    NeuralNetwork nn{ 5, 64, 10, 784 };
-    //NeuralNetworkIntrinsic nn1{ 5, 64, 10, 784 };
-    //NeuralNetworkIntrinsic nni{ 1, 8, 1, 4 };
+    std::vector<double> output{ 2, 3 };
 
 
+    
     std::vector<std::vector<double>> shortTrain;
     std::vector<double> shortLabel;
     std::vector<int> indexes;
-    for (int i = 0; i < 10000; ++i)
+    for (int i = 0; i < 10; ++i)
     {
         indexes.push_back(i);
     }
@@ -173,25 +169,24 @@ int main()
         shortTrain.push_back(trainingImages[value]);
         shortLabel.push_back(trainingLabels[value]);
     }
-
+    
+    //int layerCount, int neuronCount, int targetCount, int inputCount
+    NeuralNetworkIntrinsic nn{ 5, 64, 10, 784 };
 
     //nn.printNetwork();
-    nn.test(testImages, testLabels);
-    nn.train(shortTrain, shortLabel, .1, 200, 50);
-    nn.test(testImages, testLabels);
+    //nn.test(testImages, testLabels);
+    //nn.train(shortTrain, shortLabel, .1, 200, 50);
+    //nn.test(testImages, testLabels);
 
-    //nn1.test(testImages, testLabels);
-    //nn1.train(shortTrain, shortLabel, .01, 80, 50);
-    //nn1.test(testImages, testLabels);
+    //nn.test(testImages, testLabels);
+    nn.train(shortTrain, shortLabel, .1, 80, 50);
+    nn.test(testImages, testLabels);
 
 
     //nn.train(input, output, .1, 1, 1);
-    //nni.train(input, output, .1, 1, 1);
 
 
     //inputs, label, eta, batchsize, epoch
-
-    
 
 
     return 0;

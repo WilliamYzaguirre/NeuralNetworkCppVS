@@ -1,24 +1,7 @@
-#include "neuralnetwork.h"
+#include "NeuralNetworkThreads.h"
 
-/*
- * TODO: No particular order
- * Add async mnist download from url
- * Step optimizer
- * RAII
- * Add intrensic
- * Add threads
- * Add swish function
- * Adam optimizer
- * Add data visualizer (plots)
- * GPU -> Genetic Algorithm
- *
- *
- * Constructor builds the layers and neurons, and assigns random weights (# of inputs for first layer, and # of neurons for subsequent),
- * and biases
- * LayerCount is number os interior layers. Input layer and target layer do not count towards that number
-*/
-NeuralNetwork::NeuralNetwork(int hiddenLayerCount, int neuronCount, int targetCount, int inputCount)
-    :hiddenLayerCount{hiddenLayerCount}, neuronCount{neuronCount}, targetCount{targetCount}, inputCount{inputCount}
+NeuralNetworkThreads::NeuralNetworkThreads(int hiddenLayerCount, int neuronCount, int targetCount, int inputCount)
+	:hiddenLayerCount{ hiddenLayerCount }, neuronCount{ neuronCount }, targetCount{ targetCount }, inputCount{ inputCount }
 {
     totalLayerCount = hiddenLayerCount + 1;
 
@@ -36,7 +19,8 @@ NeuralNetwork::NeuralNetwork(int hiddenLayerCount, int neuronCount, int targetCo
 
             //biases.push_back(getRandomDoubleVector(targetCount, 1));
 
-            biases.push_back(getDoubleVector(targetCount, .1));
+            biases.push_back(std::vector<double>(targetCount, .1));  //target count .1
+            gradientb.push_back(std::vector<double>(targetCount, 0));
 
         }
 
@@ -48,13 +32,13 @@ NeuralNetwork::NeuralNetwork(int hiddenLayerCount, int neuronCount, int targetCo
 
             //biases.push_back(getRandomDoubleVector(neuronCount, 1));
 
-            biases.push_back(getDoubleVector(neuronCount, .1));
-
+            biases.push_back(std::vector<double>(neuronCount, .1));
+            gradientb.push_back(std::vector<double>(neuronCount, 0));
         }
     }
 
     // Initialize the weights. This is a vector of layer + 1 vectors of neurons
-    std::srand((unsigned) time(NULL));
+    std::srand((unsigned)time(NULL));
 
     for (int i = 0; i < totalLayerCount; ++i)
     {
@@ -71,11 +55,12 @@ NeuralNetwork::NeuralNetwork(int hiddenLayerCount, int neuronCount, int targetCo
             for (int j = 0; j < neuronCount; ++j)
             {
                 layer.push_back(getRandomDoubleVector(inputCount, 1));
-                //layer.push_back(getDoubleVector(inputCount, 1));
+                //layer.push_back(std::vector<double>(inputCount, 1));
 
             }
 
             weights.push_back(layer);
+            gradientw.push_back(layer);
         }
 
         //  Then target layer
@@ -91,11 +76,12 @@ NeuralNetwork::NeuralNetwork(int hiddenLayerCount, int neuronCount, int targetCo
             for (int j = 0; j < targetCount; ++j)
             {
                 layer.push_back(getRandomDoubleVector(neuronCount, 1));
-                //layer.push_back(getDoubleVector(neuronCount, 2));
+                //layer.push_back(std::vector<double>(neuronCount, 2));
 
             }
 
             weights.push_back(layer);
+            gradientw.push_back(layer);
         }
         // Otherwise, we give the layer neuronCount vectors of neuronCount size
 
@@ -108,38 +94,38 @@ NeuralNetwork::NeuralNetwork(int hiddenLayerCount, int neuronCount, int targetCo
             for (int j = 0; j < neuronCount; ++j)
             {
                 layer.push_back(getRandomDoubleVector(neuronCount, 1));
-                //layer.push_back(getDoubleVector(neuronCount, 3));
+                //layer.push_back(std::vector<double>(neuronCount, 3));
 
             }
 
             weights.push_back(layer);
+            gradientw.push_back(layer);
         }
     }
 }
 
-NeuralNetwork::~NeuralNetwork()
+NeuralNetworkThreads::~NeuralNetworkThreads()
 {
 
 }
 
-std::vector<double> NeuralNetwork::getRandomDoubleVector(int count, double high)
+std::vector<double> NeuralNetworkThreads::getRandomDoubleVector(int count, double high)
 {
     std::vector<double> ret;
     for (int i = 0; i < count; ++i)
     {
-        double random = (((double) rand() / RAND_MAX)*(high*2) - high);
+        double random = (((double)rand() / RAND_MAX) * (high * 2) - high);
         ret.push_back(random);
     }
     return ret;
 }
 
-
-void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, const std::vector<double>& trainLabel, double eta, int batchSize, int epochNumber)
+void NeuralNetworkThreads::train(const std::vector<std::vector<double>>& trainInput, const std::vector<double>& trainLabel, double eta, int batchSize, int epochNumber)
 {
     double totalPoints = trainInput.size();
 
     for (int epoch = 0; epoch < epochNumber; ++epoch)
-    {       
+    {
         // batchcount is total number of batches to run
 
         int batchCount = ceil(totalPoints / batchSize);
@@ -151,9 +137,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
             // Current batch size is variable because last set might not have enough for whole batch
 
             currentBatchSize = batchSize;
-            if (totalPoints - batchSize*iteration < batchSize)
+            if (totalPoints - batchSize * iteration < batchSize)
             {
-                currentBatchSize = totalPoints - batchSize*iteration;
+                currentBatchSize = totalPoints - batchSize * iteration;
             }
 
             std::vector<std::vector<std::vector<double>>> totalWeightGradient;
@@ -189,10 +175,6 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
                 std::vector<std::vector<double>> zs; // 2D matrix to store all z's. z = weight . activation + b
                 std::vector<std::vector<double>> activations; // 2D matrix to store all activations. activation = acticationFunction(z)
 
-                // Store the gradient for a single pass, then gets added to total gradients in batch
-                std::vector<std::vector<std::vector<double>>> gradientw;
-                std::vector<std::vector<double>> gradientb;
-
                 // std::vector<std::vector<double>> deltas;             // debug
 
                 activations.push_back(activation);
@@ -206,25 +188,21 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
                     //minMaxNormalizeVector(z);
                     zs.push_back(z);
                     //std::vector<double> newActivation = sigmoid(z);
-                    std::vector<double> newActivation = relu(z);
-                    minMaxNormalizeVector(newActivation);
-                    activations.push_back(newActivation);
-                    activation.clear();
-                    activation = newActivation;
+                    activation = relu(z);
+                    minMaxNormalizeVector(activation);
+                    activations.push_back(activation);
                 }
 
-                
+
 
                 // Output layer needs different activation function for binary classification (mnist)
                 std::vector<double> z = vectorAdd(vectorMatrixMult(weights[totalLayerCount - 1], activation), biases[totalLayerCount - 1]);
                 // There is a significant decrease in learning when you normalize last z. DON'T
                 zs.push_back(z);
                 // Output layer activation function goes here
-                std::vector<double> newActivation = SoftMax(z);
+                activation = SoftMax(z);
                 //std::vector<double> newActivation = relu(z);
-                activations.push_back(newActivation);
-                activation.clear();
-                activation = newActivation;
+                activations.push_back(activation);
 
                 // Back pass
                 // Get correct vector
@@ -259,11 +237,11 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
                 // Use this for softmax and cross entropy
 
                 std::vector<double> delta = vectorSubtract(activations[activations.size() - 1], y);
-                gradientb.push_back(delta);
+                gradientb[gradientb.size() - 1] = delta;
 
                 // deltas.push_back(delta);
 
-                gradientw.push_back(vectorTransposeMult(delta, activations[activations.size() - 2]));
+                gradientw[gradientw.size() - 1] = vectorTransposeMult(delta, activations[activations.size() - 2]);
 
                 for (int i = 2; i < totalLayerCount + 1; ++i)
                 {
@@ -273,14 +251,10 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
 
                     delta = hadamardVector(vectorMatrixMult(matrixTranspose(weights[weights.size() - i + 1]), delta), sp);
 
-                    gradientb.push_back(delta);
-                    gradientw.push_back(vectorTransposeMult(delta, activations[activations.size() - i - 1]));
+                    gradientb[gradientb.size() - i] = delta;
+                    gradientw[gradientw.size() - i] = vectorTransposeMult(delta, activations[activations.size() - i - 1]);
                     // deltas.push_back(delta);
                 }
-
-                // Reverse them since I stored them in reverse order
-                std::reverse(gradientb.begin(), gradientb.end());
-                std::reverse(gradientw.begin(), gradientw.end());
 
 
                 // Update the total gradients per batch
@@ -309,10 +283,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
             // Normalize the total gradient vectors in a wjole batch
             for (int i = 0; i < int(totalBiasGradient.size()); ++i)
             {
-                // std::vector<double> test = getDoubleVector(totalBiasGradient[i].size(), (1.0/currentBatchSize));
-                // std::vector<double> hadTest = hadamardVector(totalBiasGradient[i], test);
-                //normalizeVector(hadTest);
-                totalBiasGradient[i] = hadamardVector(totalBiasGradient[i], getDoubleVector(totalBiasGradient[i].size(), (1.0/currentBatchSize)));
+                totalBiasGradient[i] = hadamardVector(totalBiasGradient[i], std::vector<double>(totalBiasGradient[i].size(), (1.0 / currentBatchSize)));
                 normalizeVector(totalBiasGradient[i]);
             }
 
@@ -320,7 +291,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
             {
                 for (int j = 0; j < int(totalWeightGradient[i].size()); ++j)
                 {
-                    totalWeightGradient[i][j] = hadamardVector(totalWeightGradient[i][j], getDoubleVector(totalWeightGradient[i][j].size(), (1.0/currentBatchSize)));
+                    totalWeightGradient[i][j] = hadamardVector(totalWeightGradient[i][j], std::vector<double>(totalWeightGradient[i][j].size(), (1.0 / currentBatchSize)));
                     normalizeVector(totalWeightGradient[i][j]);
                 }
             }
@@ -330,7 +301,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
             {
                 for (int j = 0; j < int(biases[i].size()); ++j)
                 {
-                    biases.at(i).at(j) -= eta*totalBiasGradient[i][j];
+                    biases.at(i).at(j) -= eta * totalBiasGradient[i][j];
                 }
             }
 
@@ -340,7 +311,7 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
                 {
                     for (int h = 0; h < int(weights[i][j].size()); ++h)
                     {
-                        weights[i][j][h] = weights[i][j][h] - eta*totalWeightGradient[i][j][h];
+                        weights[i][j][h] = weights[i][j][h] - eta * totalWeightGradient[i][j][h];
                     }
                 }
             }
@@ -355,10 +326,9 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
         }
         std::cout << "Epoch " << epoch << " Complete." << std::endl;
     }
-
 }
 
-void NeuralNetwork::test(const std::vector<std::vector<double>>& testInput, const std::vector<double>& testLabel)
+void NeuralNetworkThreads::test(const std::vector<std::vector<double>>& testInput, const std::vector<double>& testLabel)
 {
     int correct = 0;
     int incorrect = 0;
@@ -401,23 +371,7 @@ void NeuralNetwork::test(const std::vector<std::vector<double>>& testInput, cons
     std::cout << "Correct: " << correct << ". Incorrect: " << incorrect << std::endl;
 }
 
-std::vector<double> NeuralNetwork::sigmoid(const std::vector<double>& v)
-{
-    std::vector<double> ret;
-    for (auto item : v)
-    {
-         ret.push_back(1.0 / (1 + std::exp(-item)));
-    }
-    return ret;
-}
-
-std::vector<double> NeuralNetwork::sigmoidPrime(const std::vector<double>& v)
-{
-    std::vector<double> ret = hadamardVector(sigmoid(v), vectorSubtract(getDoubleVector(v.size(), 1.0), sigmoid(v))); //sig(v) * (1 - sig(v)
-    return ret;
-}
-
-std::vector<double> NeuralNetwork::relu(const std::vector<double> &v)
+std::vector<double> NeuralNetworkThreads::relu(const std::vector<double>& v)
 {
     std::vector<double> ret;
     for (auto item : v)
@@ -434,7 +388,7 @@ std::vector<double> NeuralNetwork::relu(const std::vector<double> &v)
     return ret;
 }
 
-std::vector<double> NeuralNetwork::reluPrime(const std::vector<double> &v)
+std::vector<double> NeuralNetworkThreads::reluPrime(const std::vector<double>& v)
 {
     std::vector<double> ret;
     for (auto item : v)
@@ -451,30 +405,7 @@ std::vector<double> NeuralNetwork::reluPrime(const std::vector<double> &v)
     return ret;
 }
 
-std::vector<double> NeuralNetwork::getDoubleVector(int count, double value)
-{
-    std::vector<double> ret;
-    for (int i = 0; i < count; ++i)
-    {
-         ret.push_back(value);
-    }
-    return ret;
-}
-
-double NeuralNetwork::MSElossFunction(const std::vector<double>& output, const std::vector<double>& y)
-{
-    std::vector<double> diff = vectorSubtract(output, y);
-    diff = hadamardVector(diff, getDoubleVector(diff.size(), 2.0/currentBatchSize));
-    return (vectorSum(hadamardVector(diff, diff)));
-}
-
-std::vector<double> NeuralNetwork::MSElossDerivative(const std::vector<double>& output, const std::vector<double>& y)
-{
-    std::vector<double> diff = vectorSubtract(output, y);
-    return (hadamardVector(diff, getDoubleVector(diff.size(), 2.0/currentBatchSize)));
-}
-
-std::vector<double> NeuralNetwork::SoftMax(const std::vector<double> &z)
+std::vector<double> NeuralNetworkThreads::SoftMax(const std::vector<double>& z)
 {
     double total = 0;
     double max = 0;
@@ -492,17 +423,12 @@ std::vector<double> NeuralNetwork::SoftMax(const std::vector<double> &z)
     }
     for (auto val : z)
     {
-        ret.push_back(std::exp(val - max)/total);
+        ret.push_back(std::exp(val - max) / total);
     }
     return ret;
 }
 
-//std::vector<double> NeuralNetwork::SoftMaxDerivative(const std::vector<double> &z)
-//{
-//
-//}
-
-double NeuralNetwork::crossEntropyLoss(const std::vector<double> &output, const std::vector<double> &y)
+double NeuralNetworkThreads::crossEntropyLoss(const std::vector<double>& output, const std::vector<double>& y)
 {
     std::vector<double> temp;
     for (auto val : output)
@@ -510,14 +436,5 @@ double NeuralNetwork::crossEntropyLoss(const std::vector<double> &output, const 
         temp.push_back(log(val));
     }
     double ret = vectorDotProduct(temp, y);
-    return (-1.0/currentBatchSize)*ret;
+    return (-1.0 / currentBatchSize) * ret;
 }
-
-//std::vector<double> NeuralNetwork::crossEntropyLossDeriv(const std::vector<double> &output, const std::vector<double> &y)
-//{
-//
-//}
-
-
-
-

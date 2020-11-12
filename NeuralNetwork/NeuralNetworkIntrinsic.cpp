@@ -74,8 +74,8 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
 
             for (int j = 0; j < neuronCount; ++j)
             {
-                //layer.push_back(getRandomDoubleVector(inputCount, 1));
-                layer.push_back(std::vector<double>(inputCount, 1));
+                layer.push_back(getRandomDoubleVector(inputCount, 1));
+                //layer.push_back(std::vector<double>(inputCount, 1));
 
             }
 
@@ -95,8 +95,8 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
 
             for (int j = 0; j < targetCount; ++j)
             {
-                //layer.push_back(getRandomDoubleVector(neuronCount, 1));
-                layer.push_back(std::vector<double>(neuronCount, 2));
+                layer.push_back(getRandomDoubleVector(neuronCount, 1));
+                //layer.push_back(std::vector<double>(neuronCount, 2));
 
             }
 
@@ -113,8 +113,8 @@ NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronC
 
             for (int j = 0; j < neuronCount; ++j)
             {
-                //layer.push_back(getRandomDoubleVector(neuronCount, 1));
-                layer.push_back(std::vector<double>(neuronCount, 3));
+                layer.push_back(getRandomDoubleVector(neuronCount, 1));
+                //layer.push_back(std::vector<double>(neuronCount, 3));
 
             }
 
@@ -194,18 +194,19 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
                 // I'm gonna cheat a little here with normalization. I know every image will have a min of 0, and a
                 // max of 255. So I'm gonna use those for min-max scaling, without having to iterate the whole vector
+                
                 __m256d _temp;
                 __m256d _divisor = _mm256_set1_pd(255.0);
                 for (int i = 0; i < activation.size(); i += 4)
                 {
                     _temp = _mm256_set_pd(activation[i], activation[i + 1], activation[i + 2], activation[i + 3]);
                     _temp = _mm256_div_pd(_temp, _divisor);
-                    activation[i] = _temp.m256d_f64[3];
-                    activation[i + 1] = _temp.m256d_f64[2];
-                    activation[i + 2] = _temp.m256d_f64[1];
-                    activation[i + 3] = _temp.m256d_f64[0];
+                    activation[i] = _temp.m256d_f64[0];
+                    activation[i + 1] = _temp.m256d_f64[1];
+                    activation[i + 2] = _temp.m256d_f64[2];
+                    activation[i + 3] = _temp.m256d_f64[3];
                 }
-
+                
 
                 std::vector<std::vector<double>> zs; // 2D matrix to store all z's. z = weight . activation + b
                 std::vector<std::vector<double>> activations; // 2D matrix to store all activations. activation = acticationFunction(z)
@@ -251,6 +252,7 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                         for (int values = 0; values < weights[layer][neur].size(); ++values)
                         {
                             // _w = weights[layer][neuron0,1,2,3][value in neuron]
+
                             _w = _mm256_set_pd(weights[layer][neur][values], weights[layer][neur+1][values], weights[layer][neur+2][values], weights[layer][neur+3][values]);
 
                             // _a = |activation0|activation0|activation0|activation0|
@@ -267,10 +269,10 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
 // I don't know why, but I can't get these lines to work. Am I secretly using linux?
 //#if defined(_WIN64)
-                        z[neur] = _z.m256d_f64[3];
-                        z[neur + 1] = _z.m256d_f64[2];
-                        z[neur + 2] = _z.m256d_f64[1];
-                        z[neur + 3] = _z.m256d_f64[0];                        
+                        z[neur] = _z.m256d_f64[0];
+                        z[neur + 1] = _z.m256d_f64[1];
+                        z[neur + 2] = _z.m256d_f64[2];
+                        z[neur + 3] = _z.m256d_f64[3];                        
 //#endif
 
                         // Now we take the 4 z's and apply the activation funcction (relu) to get 4 a's
@@ -299,16 +301,17 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                         // we can either wait till the end and add 4 at a time, then sum the resulting 4
                         // or we just keep a running total at this point
                         
-                        newActivation[neur] = _a.m256d_f64[3];
-                        newActivation[neur + 1] = _a.m256d_f64[2];
-                        newActivation[neur + 2] = _a.m256d_f64[1];
-                        newActivation[neur + 3] = _a.m256d_f64[0];
+                        newActivation[neur] = _a.m256d_f64[0];
+                        newActivation[neur + 1] = _a.m256d_f64[1];
+                        newActivation[neur + 2] = _a.m256d_f64[2];
+                        newActivation[neur + 3] = _a.m256d_f64[3];
 
 
                     }
                     // normalize with AVX2 normalization funciton, I can maybe speed this up later by writing this function in-line
                     // and keeping a running total of the activations as I make them for the normalization function.
                     // also look into standardization and using min-max normalization instead
+                    zs.push_back(z);
                     normalizeVectorAVX2(newActivation);
 
                     // use move semantics
@@ -318,42 +321,9 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 }
 
                 // Output layer needs different activation function for binary classification (mnist)
-                // Umm I don't know if using AVX2 on a single layer like this is actually worth it... but let's do it for fun
-                z.resize(biases[totalLayerCount - 1].size(), 0);
-                newActivation.resize(z.size(), 0);
-
-
-                // Solving for 4 neurons at a time, so go 4 neurons at a time through the final layer
-                for (int neur = 0; neur < weights[totalLayerCount - 1].size(); neur += 4)
-                {
-                    _z = _mm256_set1_pd(0.0);          // z = |0|0|0|0|
-
-                    // Go through each value of the weight vector associated with each neuron and take the same position from each vector
-                    for (int values = 0; values < weights[totalLayerCount - 1][neur].size(); ++values)
-                    {
-                        // _w = weights[layer][neuron0,1,2,3][value in neuron]
-                        _w = _mm256_set_pd(weights[totalLayerCount - 1][neur][values], weights[totalLayerCount - 1][neur + 1][values], weights[totalLayerCount - 1][neur + 2][values], weights[totalLayerCount - 1][neur + 3][values]);
-
-                        // _a = |activation0|activation0|activation0|activation0|
-                        _a = _mm256_set1_pd(activation[values]);
-
-                        _z = _mm256_fmadd_pd(_a, _w, _z);  // z = a * w + z
-                    }
-
-                    // _b = |bias0|bias1|bias2|bias3|
-                    _b = _mm256_set_pd(biases[totalLayerCount - 1][neur], biases[totalLayerCount - 1][neur + 1], biases[totalLayerCount - 1][neur + 2], biases[totalLayerCount - 1][neur + 3]);
-
-
-                    _z = _mm256_add_pd(_z, _b);      // z = a * w + b
-
-// I don't know why, but I can't get these lines to work. Am I secretly using linux?
-//#if defined(_WIN64)
-                    z[neur] = _z.m256d_f64[3];
-                    z[neur + 1] = _z.m256d_f64[2];
-                    z[neur + 2] = _z.m256d_f64[1];
-                    z[neur + 3] = _z.m256d_f64[0];
-                }
-//#endif
+                // Umm I don't know if using AVX2 on a single layer like this is actually worth it... but let's do it for fun. MNIST has 10 outputs idiot
+                // Don't use AVX2
+                z = vectorAdd(vectorMatrixMult(weights[totalLayerCount - 1], activation), biases[totalLayerCount - 1]);
                 zs.push_back(z);
                 // Output layer activation function goes here
                 // Honestly, for mnist, I know there's only 10 values here, I'm not gonna use AVX2 for this
@@ -471,7 +441,14 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 // _avg = | 1 / batchsize | 1 / batchsize | 1 / batchsize | 1 / batchsize |
                 // _b = 
                 totalBiasGradient[i] = hadamardVector(totalBiasGradient[i], getDoubleVector(totalBiasGradient[i].size(), (1.0 / currentBatchSize)));
-                normalizeVectorAVX2(totalBiasGradient[i]);
+                if (i != totalBiasGradient.size() - 1)
+                {
+                    normalizeVectorAVX2(totalBiasGradient[i]);
+                }
+                else
+                {
+                    normalizeVector(totalBiasGradient[i]);
+                }
             }
 
             for (int i = 0; i < int(totalWeightGradient.size()); ++i)
@@ -679,13 +656,14 @@ void NeuralNetworkIntrinsic::normalizeVectorAVX2(std::vector<double>& v)
     }
     total = _total.m256d_f64[0] + _total.m256d_f64[1] + _total.m256d_f64[2] + _total.m256d_f64[3];
     total = std::sqrt(total);
+    _total = _mm256_set1_pd(total);
     for (int i = 0; i < v.size(); i += 4)
     {
         _temp = _mm256_set_pd(v[i], v[i + 1], v[i + 2], v[i + 3]);
-        _temp = _mm256_sqrt_pd(_temp);
-        v[i] = _temp.m256d_f64[3];
-        v[i + 1] = _temp.m256d_f64[2];
-        v[i + 2] = _temp.m256d_f64[1];
-        v[i + 3] = _temp.m256d_f64[0];
+        _temp = _mm256_div_pd(_temp, _total);
+        v[i] = _temp.m256d_f64[0];
+        v[i + 1] = _temp.m256d_f64[1];
+        v[i + 2] = _temp.m256d_f64[2];
+        v[i + 3] = _temp.m256d_f64[3];
     }
 }

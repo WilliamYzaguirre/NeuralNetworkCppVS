@@ -23,12 +23,14 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="neuralnetwork.cpp" />
     <ClCompile Include="NeuralNetworkIntrinsic.cpp" />
+    <ClCompile Include="NeuralNetworkThreads.cpp" />
     <ClCompile Include="vectoroperations.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GetMnistDatasets.h" />
     <ClInclude Include="neuralnetwork.h" />
     <ClInclude Include="NeuralNetworkIntrinsic.h" />
+    <ClInclude Include="NeuralNetworkThreads.h" />
     <ClInclude Include="vectoroperations.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

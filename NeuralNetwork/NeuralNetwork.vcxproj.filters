@@ -29,6 +29,7 @@
     <ClCompile Include="GetMnistDatasets.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="NeuralNetworkThreads.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="neuralnetwork.h">
@@ -41,6 +42,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="GetMnistDatasets.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="NeuralNetworkThreads.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
