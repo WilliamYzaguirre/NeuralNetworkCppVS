@@ -4,6 +4,8 @@
 #include <vector>
 #include <iostream>
 #include <math.h>
+#include <immintrin.h>
+#include <algorithm>
 
 double vectorDotProduct(const std::vector<double>& v1, const std::vector<double>& v2) noexcept;
 
@@ -23,7 +25,9 @@ std::vector<std::vector<double>> matrixTranspose(const std::vector<std::vector<d
 
 void normalizeVector(std::vector<double>& v);
 
-void minMaxNormalizeVector(std::vector<double>& v);
+void minMaxNormalizeVector(std::vector<double>& v, double low, double high);
+
+void minMaxNormalizeVectorAVX2(std::vector<double>& v, double low, double high);
 
 std::vector<double> averageVectors(const std::vector<std::vector<double>>& vectors) noexcept;
 

@@ -6,6 +6,7 @@
 #include <random>
 #include <chrono>
 #include "NeuralNetworkThreads.h"
+#include "vectoroperations.h"
 
 
 int reverseInt (int i)
@@ -111,8 +112,8 @@ void normalizeSpeedTests()
     auto standardDuration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
     std::cout << "Normal normal duration: " << standardDuration.count() << std::endl;
 
-    std::vector<double> test2(100000000, ((double)rand() / RAND_MAX) * (10));
-
+    //std::vector<double> test2(100000000, ((double)rand() / RAND_MAX) * (10));
+    std::vector<double> test2{ 1.0,0,0,4.0 };
     // AVX2 normalization
     start = std::chrono::high_resolution_clock::now();
     total = 0;
@@ -124,11 +125,11 @@ void normalizeSpeedTests()
         _total = _mm256_fmadd_pd(_temp, _temp, _total);
     }
     total = _total.m256d_f64[0] + _total.m256d_f64[1] + _total.m256d_f64[2] + _total.m256d_f64[3];
-    total = std::sqrt(total);
+    _total = _mm256_set1_pd(std::sqrt(total));
     for (int i = 0; i < test2.size(); i += 4)
     {
         _temp = _mm256_set_pd(test2[i], test2[i + 1], test2[i + 2], test2[i + 3]);
-        _temp = _mm256_sqrt_pd(_temp);
+        _temp = _mm256_div_pd(_temp, _total);
         test2[i] = _temp.m256d_f64[3];
         test2[i + 1] = _temp.m256d_f64[2];
         test2[i + 2] = _temp.m256d_f64[1];
@@ -144,7 +145,6 @@ void normalizeSpeedTests()
 
 int main()
 {
-
     std::vector<std::vector<double>> trainingImages = readMnistImages("C:\\Users\\willi\\Documents\\MNIST datasets\\train-images.idx3-ubyte", 60000, 784);
     std::vector<std::vector<double>> testImages = readMnistImages("C:\\Users\\willi\\Documents\\MNIST datasets\\t10k-images.idx3-ubyte", 10000, 784);
     std::vector<double> trainingLabels = readMnistLabels("C:\\Users\\willi\\Documents\\MNIST datasets\\train-labels.idx1-ubyte", 60000);
@@ -159,19 +159,22 @@ int main()
     std::vector<std::vector<double>> shortTrain;
     std::vector<double> shortLabel;
     std::vector<int> indexes;
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 1000; ++i)
     {
         indexes.push_back(i);
+        shortTrain.push_back(trainingImages[i]);
+        shortLabel.push_back(trainingLabels[i]);
     }
-    std::random_shuffle(indexes.begin(), indexes.end());
-    for (auto value : indexes)
-    {
-        shortTrain.push_back(trainingImages[value]);
-        shortLabel.push_back(trainingLabels[value]);
-    }
+    //std::random_shuffle(indexes.begin(), indexes.end());
+    //for (auto value : indexes)
+    //{
+    //    shortTrain.push_back(trainingImages[value]);
+    //    shortLabel.push_back(trainingLabels[value]);
+    //}
     
     //int layerCount, int neuronCount, int targetCount, int inputCount
-    NeuralNetworkIntrinsic nn{ 5, 64, 10, 784 };
+    NeuralNetworkIntrinsic nni{ 6, 128, 10, 784 };
+    NeuralNetwork nn{ 6, 128, 10, 784 };
 
     //nn.printNetwork();
     //nn.test(testImages, testLabels);
@@ -179,8 +182,20 @@ int main()
     //nn.test(testImages, testLabels);
 
     //nn.test(testImages, testLabels);
+    auto start1 = std::chrono::high_resolution_clock::now();
+    nni.train(shortTrain, shortLabel, .1, 80, 50);
+    auto stop1 = std::chrono::high_resolution_clock::now();
+    auto avx2Duration = std::chrono::duration_cast<std::chrono::seconds>(stop1 - start1);
+
+    nni.test(testImages, testLabels);
+    std::cout << "\n######################\n" << std::endl;
+    auto start2 = std::chrono::high_resolution_clock::now();
     nn.train(shortTrain, shortLabel, .1, 80, 50);
+    auto stop2 = std::chrono::high_resolution_clock::now();
+    auto normalDuration = std::chrono::duration_cast<std::chrono::seconds>(stop2 - start2);
     nn.test(testImages, testLabels);
+
+    std::cout << "Normal time: " << normalDuration.count() << " AVX2 time: " << avx2Duration.count() << std::endl;
 
 
     //nn.train(input, output, .1, 1, 1);

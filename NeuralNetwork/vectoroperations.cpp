@@ -134,6 +134,7 @@ std::vector<std::vector<double> > matrixTranspose(const std::vector<std::vector<
     return ret;
 }
 
+// I'm leaving this function here cause it's funny, but... Will... this is for literally normalizing vectors, not data... Use minmax
 
 void normalizeVector(std::vector<double> &v)
 {
@@ -158,7 +159,7 @@ void normalizeVector(std::vector<double> &v)
 
 }
 
-void minMaxNormalizeVector(std::vector<double>& v)
+void minMaxNormalizeVector(std::vector<double>& v, double low, double high)
 {
     double max = -100000;
     double min = 1000000;
@@ -176,7 +177,80 @@ void minMaxNormalizeVector(std::vector<double>& v)
     double divisor = max - min;
     for (int i = 0; i < v.size(); ++i)
     {
-        v[i] = (v[i] - min) / divisor;
+        v[i] = (high - low) * ((v[i] - min) / divisor) + low;
+    }
+}
+
+void minMaxNormalizeVectorAVX2(std::vector<double>& v, double low, double high)
+{
+    // Need registers to hold max and min. As I go through vector, I will get the 4 biggest and 4 smallest values in each of these
+    // At the end I need to compare those 4 values to get actual max and min
+    // This is 2(size/4) + 4! compares vs 2(size) compares. 
+    // Eg size = 100: 2(100/4) + 24 = 74 vs 2(100) = 200 
+    __m256d _max = _mm256_set1_pd(-1000.0);
+    __m256d _min = _mm256_set1_pd(1000.0);
+    __m256d _mask1, _temp;
+    // Iterate through values 4 at a time
+    for (int i = 0; i < v.size(); i += 4)
+    {
+        // Load 4 values
+        _temp = _mm256_set_pd(v[i], v[i + 1], v[i + 2], v[i + 3]);
+
+        // Compare to see if any are greater than _max
+        _mask1 = _mm256_cmp_pd(_temp, _max, _CMP_GT_OQ);
+
+        // And input(temp) with mask to get new max
+        _max = _mm256_and_pd(_temp, _mask1);
+
+        // Compare to see if any are less than _min
+        _mask1 = _mm256_cmp_pd(_temp, _min, _CMP_LT_OQ);
+
+        // And input(temp) with mask to get new min
+        _min = _mm256_and_pd(_temp, _mask1);
+    }
+
+    // Unpack max and min and find the real max and min
+    std::vector<double> maxTemp{ _max.m256d_f64[0], _max.m256d_f64[1], _max.m256d_f64[2], _max.m256d_f64[3] };
+    std::vector<double> minTemp{ _min.m256d_f64[0], _min.m256d_f64[1], _min.m256d_f64[2], _min.m256d_f64[3] };
+
+    double max = *std::max_element(maxTemp.begin(), maxTemp.end());
+    double min = *std::min_element(minTemp.begin(), minTemp.end());
+
+    // If both min and max are zero, then the divisor will be zero, and then we'll divide by zero and get an error.
+    // Check if this is the case now, and just assign the vector to all low's
+    if (min == 0 && max == 0)
+    {
+        for (int i = 0; i < v.size(); ++i)
+        {
+            v[i] = low;
+        }
+    }
+    else if (min == max)
+    {
+        for (int i = 0; i < v.size(); ++i)
+        {
+            v[i] = high;
+        }
+    }
+    else
+    {
+        double divisor = max - min;
+        __m256d _div = _mm256_set1_pd(divisor);
+        _min = _mm256_set1_pd(min);
+        __m256d _mult = _mm256_set1_pd(high - low);
+        __m256d _lowRange = _mm256_set1_pd(low);
+
+        for (int i = 0; i < v.size(); i += 4)
+        {
+            _temp = _mm256_set_pd(v[i], v[i + 1], v[i + 2], v[i + 3]);
+            _temp = _mm256_sub_pd(_temp, _min);
+            _temp = _mm256_div_pd(_temp, _div);
+            _temp = _mm256_fmadd_pd(_mult, _temp, _lowRange);
+            v[i] = _temp.m256d_f64[3];
+            v[i + 1] = _temp.m256d_f64[2];
+            v[i + 2] = _temp.m256d_f64[1];
+            v[i + 3] = _temp.m256d_f64[0];
+        }
     }
 }
 

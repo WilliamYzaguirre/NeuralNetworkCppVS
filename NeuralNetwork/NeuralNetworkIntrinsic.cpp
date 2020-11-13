@@ -195,19 +195,23 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 // I'm gonna cheat a little here with normalization. I know every image will have a min of 0, and a
                 // max of 255. So I'm gonna use those for min-max scaling, without having to iterate the whole vector
                 
+                /*
                 __m256d _temp;
                 __m256d _divisor = _mm256_set1_pd(255.0);
+                __m256d _diff = _mm256_set1_pd(0.8);
+                __m256d _lowRange = _mm256_set1_pd(0.1);
                 for (int i = 0; i < activation.size(); i += 4)
                 {
                     _temp = _mm256_set_pd(activation[i], activation[i + 1], activation[i + 2], activation[i + 3]);
                     _temp = _mm256_div_pd(_temp, _divisor);
+                    _temp = _mm256_fmadd_pd(_diff, _temp, _lowRange);
                     activation[i] = _temp.m256d_f64[0];
                     activation[i + 1] = _temp.m256d_f64[1];
                     activation[i + 2] = _temp.m256d_f64[2];
                     activation[i + 3] = _temp.m256d_f64[3];
                 }
                 
-
+                */
                 std::vector<std::vector<double>> zs; // 2D matrix to store all z's. z = weight . activation + b
                 std::vector<std::vector<double>> activations; // 2D matrix to store all activations. activation = acticationFunction(z)
 
@@ -269,10 +273,10 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
 // I don't know why, but I can't get these lines to work. Am I secretly using linux?
 //#if defined(_WIN64)
-                        z[neur] = _z.m256d_f64[0];
-                        z[neur + 1] = _z.m256d_f64[1];
-                        z[neur + 2] = _z.m256d_f64[2];
-                        z[neur + 3] = _z.m256d_f64[3];                        
+                        z[neur] = _z.m256d_f64[3];
+                        z[neur + 1] = _z.m256d_f64[2];
+                        z[neur + 2] = _z.m256d_f64[1];
+                        z[neur + 3] = _z.m256d_f64[0];                        
 //#endif
 
                         // Now we take the 4 z's and apply the activation funcction (relu) to get 4 a's
@@ -294,6 +298,8 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
 
                         _a = _mm256_and_pd(_z, _mask1);
 
+                        // I would try to normalize w/ AVX2 here. But there's no need for that since there won't be that many values
+
                         // oh god, now we have to worry about normalizing...
                         // so with normalizing, I'm going to wait until the end and only normalize the activations
                         // since z's will only be used later in reluPrime, which doesn't really matter if it's large or not
@@ -301,18 +307,21 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                         // we can either wait till the end and add 4 at a time, then sum the resulting 4
                         // or we just keep a running total at this point
                         
-                        newActivation[neur] = _a.m256d_f64[0];
-                        newActivation[neur + 1] = _a.m256d_f64[1];
-                        newActivation[neur + 2] = _a.m256d_f64[2];
-                        newActivation[neur + 3] = _a.m256d_f64[3];
+                        newActivation[neur] = _a.m256d_f64[3];
+                        newActivation[neur + 1] = _a.m256d_f64[2];
+                        newActivation[neur + 2] = _a.m256d_f64[1];
+                        newActivation[neur + 3] = _a.m256d_f64[0];
 
 
                     }
+
                     // normalize with AVX2 normalization funciton, I can maybe speed this up later by writing this function in-line
                     // and keeping a running total of the activations as I make them for the normalization function.
                     // also look into standardization and using min-max normalization instead
                     zs.push_back(z);
-                    normalizeVectorAVX2(newActivation);
+                    //std::cout << "Normalizing New Act" << std::endl;
+                    //minMaxNormalizeVectorAVX2(newActivation, .1, .9);
+                    normalizeVector(newActivation);
 
                     // use move semantics
                     activation = std::move(newActivation);
@@ -441,14 +450,16 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 // _avg = | 1 / batchsize | 1 / batchsize | 1 / batchsize | 1 / batchsize |
                 // _b = 
                 totalBiasGradient[i] = hadamardVector(totalBiasGradient[i], getDoubleVector(totalBiasGradient[i].size(), (1.0 / currentBatchSize)));
-                if (i != totalBiasGradient.size() - 1)
-                {
-                    normalizeVectorAVX2(totalBiasGradient[i]);
-                }
-                else
-                {
-                    normalizeVector(totalBiasGradient[i]);
-                }
+                //if (i != totalBiasGradient.size() - 1)
+                //{
+                //    minMaxNormalizeVectorAVX2(totalBiasGradient[i], .01, 1);
+                //}
+                //else
+                //{
+                //    minMaxNormalizeVector(totalBiasGradient[i], .01, 1);
+
+                //}
+                normalizeVector(totalBiasGradient[i]);
             }
 
             for (int i = 0; i < int(totalWeightGradient.size()); ++i)
@@ -456,7 +467,9 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 for (int j = 0; j < int(totalWeightGradient[i].size()); ++j)
                 {
                     totalWeightGradient[i][j] = hadamardVector(totalWeightGradient[i][j], getDoubleVector(totalWeightGradient[i][j].size(), (1.0 / currentBatchSize)));
-                    normalizeVectorAVX2(totalWeightGradient[i][j]);
+                    //std::cout << "Normalizing Weight Grad" << std::endl;
+                    //minMaxNormalizeVectorAVX2(totalWeightGradient[i][j], .01, 1);
+                    normalizeVector(totalWeightGradient[i][j]);
                 }
             }
 
@@ -466,6 +479,7 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                 for (int j = 0; j < int(biases[i].size()); ++j)
                 {
                     biases.at(i).at(j) -= eta * totalBiasGradient[i][j];
+                    //std::cout << "New Bias: " << biases[i][j] << std::endl;
                 }
             }
 
@@ -476,6 +490,7 @@ void NeuralNetworkIntrinsic::train(const std::vector<std::vector<double>>& train
                     for (int h = 0; h < int(weights[i][j].size()); ++h)
                     {
                         weights[i][j][h] -= eta * totalWeightGradient[i][j][h];
+                        //std::cout << "New Weight: " << weights[i][j][h] << std::endl;
                     }
                 }
             }
@@ -506,6 +521,7 @@ void NeuralNetworkIntrinsic::test(const std::vector<std::vector<double>>& testIn
             z = vectorAdd(vectorMatrixMult(weights[i], activation), biases[i]);
             //activation = sigmoid(z);
             activation = relu(z);
+            //minMaxNormalizeVectorAVX2(activation, .1, .9);
             normalizeVector(activation);
         }
 
@@ -612,7 +628,7 @@ std::vector<double> NeuralNetworkIntrinsic::MSElossDerivative(const std::vector<
 std::vector<double> NeuralNetworkIntrinsic::SoftMax(const std::vector<double>& z)
 {
     double total = 0;
-    double max = 0;
+    double max = -1000;
     for (auto val : z)
     {
         if (val > max)
@@ -624,6 +640,10 @@ std::vector<double> NeuralNetworkIntrinsic::SoftMax(const std::vector<double>& z
     for (auto val : z)
     {
         total += std::exp(val - max);
+    }
+    if (total == 0)
+    {
+        std::cout << "SOFT" << std::endl;
     }
     for (auto val : z)
     {
@@ -638,6 +658,10 @@ double NeuralNetworkIntrinsic::crossEntropyLoss(const std::vector<double>& outpu
     std::vector<double> temp;
     for (auto val : output)
     {
+        if (val == 0)
+        {
+            std::cout << "CEL" << std::endl;
+        }
         temp.push_back(log(val));
     }
     double ret = vectorDotProduct(temp, y);
@@ -649,21 +673,28 @@ void NeuralNetworkIntrinsic::normalizeVectorAVX2(std::vector<double>& v)
     double total = 0;
     __m256d _temp;
     __m256d _total = _mm256_setzero_pd();
+    // Iterate through and get the 4 largest and 4 smallest values in input
     for (int i = 0; i < v.size(); i += 4)
     {
         _temp = _mm256_set_pd(v[i], v[i + 1], v[i + 2], v[i + 3]);
         _total = _mm256_fmadd_pd(_temp, _temp, _total);
     }
     total = _total.m256d_f64[0] + _total.m256d_f64[1] + _total.m256d_f64[2] + _total.m256d_f64[3];
-    total = std::sqrt(total);
-    _total = _mm256_set1_pd(total);
+    if (total == 0)
+    {
+        for (auto i : v)
+        {
+            std::cout << i << std::endl;
+        }
+    }
+    _total = _mm256_set1_pd(std::sqrt(total));
     for (int i = 0; i < v.size(); i += 4)
     {
         _temp = _mm256_set_pd(v[i], v[i + 1], v[i + 2], v[i + 3]);
         _temp = _mm256_div_pd(_temp, _total);
-        v[i] = _temp.m256d_f64[0];
-        v[i + 1] = _temp.m256d_f64[1];
-        v[i + 2] = _temp.m256d_f64[2];
-        v[i + 3] = _temp.m256d_f64[3];
+        v[i] = _temp.m256d_f64[3];
+        v[i + 1] = _temp.m256d_f64[2];
+        v[i + 2] = _temp.m256d_f64[1];
+        v[i + 3] = _temp.m256d_f64[0];
     }
 }

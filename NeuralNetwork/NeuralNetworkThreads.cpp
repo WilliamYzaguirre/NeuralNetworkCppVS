@@ -169,7 +169,7 @@ void NeuralNetworkThreads::train(const std::vector<std::vector<double>>& trainIn
 
                 // First input to go into the forward pass. Named activation for ease in forward pass
                 std::vector<double> activation = trainInput[currentInput];
-                minMaxNormalizeVector(activation);
+                minMaxNormalizeVector(activation, .1, .9);
 
 
                 std::vector<std::vector<double>> zs; // 2D matrix to store all z's. z = weight . activation + b
@@ -189,7 +189,7 @@ void NeuralNetworkThreads::train(const std::vector<std::vector<double>>& trainIn
                     zs.push_back(z);
                     //std::vector<double> newActivation = sigmoid(z);
                     activation = relu(z);
-                    minMaxNormalizeVector(activation);
+                    minMaxNormalizeVector(activation, .1, .9);
                     activations.push_back(activation);
                 }
 

@@ -183,9 +183,14 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
 
                 // First input to go into the forward pass. Named activation for ease in forward pass
                 std::vector<double> activation = trainInput[currentInput];
-                minMaxNormalizeVector(activation);
+                /*
+                for (int i = 0; i < activation.size(); ++i)
+                {
+                    activation[i] = (activation[i] / 255) * .8 + .1;
+                }
+                //minMaxNormalizeVector(activation, .1, .9);
 
-
+                */
                 std::vector<std::vector<double>> zs; // 2D matrix to store all z's. z = weight . activation + b
                 std::vector<std::vector<double>> activations; // 2D matrix to store all activations. activation = acticationFunction(z)
 
@@ -207,7 +212,8 @@ void NeuralNetwork::train(const std::vector<std::vector<double>>& trainInput, co
                     zs.push_back(z);
                     //std::vector<double> newActivation = sigmoid(z);
                     std::vector<double> newActivation = relu(z);
-                    minMaxNormalizeVector(newActivation);
+                    //minMaxNormalizeVector(newActivation, .1, .9);
+                    normalizeVector(newActivation);
                     activations.push_back(newActivation);
                     activation.clear();
                     activation = newActivation;
