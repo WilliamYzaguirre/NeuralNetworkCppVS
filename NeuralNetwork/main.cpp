@@ -175,27 +175,37 @@ int main()
     //int layerCount, int neuronCount, int targetCount, int inputCount
     NeuralNetworkIntrinsic nni{ 6, 128, 10, 784 };
     NeuralNetwork nn{ 6, 128, 10, 784 };
+    NeuralNetworkThreads nnt{ 6, 128, 10, 784 };
+    
+    nnt.train(shortTrain, shortLabel, .1, 80, 50);
 
-    //nn.printNetwork();
-    //nn.test(testImages, testLabels);
-    //nn.train(shortTrain, shortLabel, .1, 200, 50);
-    //nn.test(testImages, testLabels);
-
-    //nn.test(testImages, testLabels);
+    // Below is a speed comparison with AVX2 and threads
+    /*
     auto start1 = std::chrono::high_resolution_clock::now();
     nni.train(shortTrain, shortLabel, .1, 80, 50);
     auto stop1 = std::chrono::high_resolution_clock::now();
     auto avx2Duration = std::chrono::duration_cast<std::chrono::seconds>(stop1 - start1);
-
     nni.test(testImages, testLabels);
+
     std::cout << "\n######################\n" << std::endl;
+
     auto start2 = std::chrono::high_resolution_clock::now();
     nn.train(shortTrain, shortLabel, .1, 80, 50);
     auto stop2 = std::chrono::high_resolution_clock::now();
     auto normalDuration = std::chrono::duration_cast<std::chrono::seconds>(stop2 - start2);
     nn.test(testImages, testLabels);
 
-    std::cout << "Normal time: " << normalDuration.count() << " AVX2 time: " << avx2Duration.count() << std::endl;
+    std::cout << "\n######################\n" << std::endl;
+
+    auto start3 = std::chrono::high_resolution_clock::now();
+    nnt.train(shortTrain, shortLabel, .1, 80, 50);
+    auto stop3 = std::chrono::high_resolution_clock::now();
+    auto threadDuration = std::chrono::duration_cast<std::chrono::seconds>(stop3 - start3);
+    nnt.test(testImages, testLabels);
+
+    std::cout << "Normal time: " << normalDuration.count() << " AVX2 time: " << avx2Duration.count() << " Thread time: " << threadDuration.count() << std::endl;
+
+    */
 
 
     //nn.train(input, output, .1, 1, 1);

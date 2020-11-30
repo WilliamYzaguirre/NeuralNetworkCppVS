@@ -18,6 +18,9 @@ less modular design. We'll see how that plays out in the long run
 FOR THE LOVE OF GOD ONLY USE THIS IF THE NEURON COUNT IN ALL OF THE LAYERS (except the output in this case) ARE DIVISIBLE BY 4 AND YOU HAVE
 A PROCESSOR THAT SUPPORTS AVX 4
 
+Update: I don't know why, but this does not train as well as the normal one does anymore... And runs a million times faster. I seem to 
+have damaged something...
+
 */
 
 NeuralNetworkIntrinsic::NeuralNetworkIntrinsic(int hiddenLayerCount, int neuronCount, int targetCount, int inputCount)

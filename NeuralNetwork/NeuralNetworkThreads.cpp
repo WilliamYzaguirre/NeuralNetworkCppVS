@@ -1,5 +1,11 @@
 #include "NeuralNetworkThreads.h"
 
+/*
+Start with giving it normal threads. Lock before accessing the total gradient data. Join when done.
+Then maybe try to implement threadpools so you don't have the overhead of creating and destroying threads
+Then maybe some lock-free? Do more research
+*/
+
 NeuralNetworkThreads::NeuralNetworkThreads(int hiddenLayerCount, int neuronCount, int targetCount, int inputCount)
 	:hiddenLayerCount{ hiddenLayerCount }, neuronCount{ neuronCount }, targetCount{ targetCount }, inputCount{ inputCount }
 {
@@ -21,6 +27,7 @@ NeuralNetworkThreads::NeuralNetworkThreads(int hiddenLayerCount, int neuronCount
 
             biases.push_back(std::vector<double>(targetCount, .1));  //target count .1
             gradientb.push_back(std::vector<double>(targetCount, 0));
+            totalBiasGradient.push_back(std::vector<double>(targetCount, 0));
 
         }
 
@@ -34,6 +41,7 @@ NeuralNetworkThreads::NeuralNetworkThreads(int hiddenLayerCount, int neuronCount
 
             biases.push_back(std::vector<double>(neuronCount, .1));
             gradientb.push_back(std::vector<double>(neuronCount, 0));
+            totalBiasGradient.push_back(std::vector<double>(neuronCount, 0));
         }
     }
 
@@ -61,6 +69,7 @@ NeuralNetworkThreads::NeuralNetworkThreads(int hiddenLayerCount, int neuronCount
 
             weights.push_back(layer);
             gradientw.push_back(layer);
+            totalWeightGradient.push_back(layer);
         }
 
         //  Then target layer
@@ -82,6 +91,7 @@ NeuralNetworkThreads::NeuralNetworkThreads(int hiddenLayerCount, int neuronCount
 
             weights.push_back(layer);
             gradientw.push_back(layer);
+            totalWeightGradient.push_back(layer);
         }
         // Otherwise, we give the layer neuronCount vectors of neuronCount size
 
@@ -100,6 +110,7 @@ NeuralNetworkThreads::NeuralNetworkThreads(int hiddenLayerCount, int neuronCount
 
             weights.push_back(layer);
             gradientw.push_back(layer);
+            totalWeightGradient.push_back(layer);
         }
     }
 }
@@ -107,6 +118,118 @@ NeuralNetworkThreads::NeuralNetworkThreads(int hiddenLayerCount, int neuronCount
 NeuralNetworkThreads::~NeuralNetworkThreads()
 {
 
+}
+
+void NeuralNetworkThreads::BackPropogate(std::vector<double> activation, double label)
+{
+    std::vector<std::vector<double>> zs; // 2D matrix to store all z's. z = weight . activation + b
+    std::vector<std::vector<double>> activations; // 2D matrix to store all activations. activation = acticationFunction(z)
+
+    // std::vector<std::vector<double>> deltas;             // debug
+
+    activations.push_back(activation);
+
+    // Forward pass
+    // Start with hidden layers
+    for (int i = 0; i < hiddenLayerCount; ++i)
+    {
+        std::vector<double> z = vectorAdd(vectorMatrixMult(weights[i], activation), biases[i]);
+        //normalizeVector(z);
+        //minMaxNormalizeVector(z);
+        zs.push_back(z);
+        //std::vector<double> newActivation = sigmoid(z);
+        activation = relu(z);
+        minMaxNormalizeVector(activation, .1, .9);
+        activations.push_back(activation);
+    }
+
+
+
+    // Output layer needs different activation function for binary classification (mnist)
+    std::vector<double> z = vectorAdd(vectorMatrixMult(weights[totalLayerCount - 1], activation), biases[totalLayerCount - 1]);
+    // There is a significant decrease in learning when you normalize last z. DON'T
+    zs.push_back(z);
+    // Output layer activation function goes here
+    activation = SoftMax(z);
+    //std::vector<double> newActivation = relu(z);
+    activations.push_back(activation);
+
+    // Back pass
+    // Get correct vector
+
+    std::vector<double> y;
+    for (int i = 0; i < targetCount; ++i)
+    {
+        if (i == label)
+        {
+            y.push_back(1);
+        }
+        else
+        {
+            y.push_back(0);
+        }
+    }
+
+    // delta = costDerivative(a(L) - y)*activationDerivative(z(L))
+    // dC/db = costDerivative(a(L) - y)*activationDerivative(z(L))
+    // dC/dw = a(L-1)*costDerivative(a(L) - y)*activationDerivative(z(L))
+
+    // Using cross entropy loss and softmax for output
+    double cost = crossEntropyLoss(activations[activations.size() - 1], y);
+    //costs.push_back(cost);
+
+    // Use this for MSE and sigmoid output
+    // std::vector<double> delta = hadamardVector(MSElossDerivative(activations[activations.size() - 1], y), sigmoidPrime(zs[zs.size() - 1]));
+
+    // Use this for MSE and relu output
+    // std::vector<double> delta = hadamardVector(costDerivative(activations[activations.size() - 1], y), reluPrime(zs[zs.size() - 1]));
+
+    // Use this for softmax and cross entropy
+
+    std::vector<double> delta = vectorSubtract(activations[activations.size() - 1], y);
+
+    std::scoped_lock lock(mux);
+
+    gradientb[gradientb.size() - 1] = delta;
+
+    // deltas.push_back(delta);
+
+    gradientw[gradientw.size() - 1] = vectorTransposeMult(delta, activations[activations.size() - 2]);
+
+    for (int i = 2; i < totalLayerCount + 1; ++i)
+    {
+        std::vector<double> z = zs[zs.size() - i];
+        //std::vector<double> sp = sigmoidPrime(z);
+        std::vector<double> sp = reluPrime(z);
+
+        delta = hadamardVector(vectorMatrixMult(matrixTranspose(weights[weights.size() - i + 1]), delta), sp);
+
+        gradientb[gradientb.size() - i] = delta;
+        gradientw[gradientw.size() - i] = vectorTransposeMult(delta, activations[activations.size() - i - 1]);
+        // deltas.push_back(delta);
+    }
+
+    // Update the total gradients per batch
+    for (int i = 0; i < int(totalBiasGradient.size()); ++i)
+    {
+        for (int j = 0; j < int(totalBiasGradient[i].size()); ++j)
+        {
+            totalBiasGradient[i][j] += gradientb[i][j];
+        }
+    }
+
+    for (int i = 0; i < int(totalWeightGradient.size()); ++i)
+    {
+        for (int j = 0; j < int(totalWeightGradient[i].size()); ++j)
+        {
+            for (int h = 0; h < int(totalWeightGradient[i][j].size()); ++h)
+            {
+                totalWeightGradient[i][j][h] += gradientw[i][j][h];
+            }
+        }
+    }
+
+    costs.push_back(cost);
 }
 
 std::vector<double> NeuralNetworkThreads::getRandomDoubleVector(int count, double high)
@@ -130,8 +253,6 @@ void NeuralNetworkThreads::train(const std::vector<std::vector<double>>& trainIn
 
         int batchCount = ceil(totalPoints / batchSize);
 
-        std::vector<double> costs;
-
         for (int iteration = 0; iteration < batchCount; ++iteration)
         {
             // Current batch size is variable because last set might not have enough for whole batch
@@ -142,7 +263,7 @@ void NeuralNetworkThreads::train(const std::vector<std::vector<double>>& trainIn
                 currentBatchSize = totalPoints - batchSize * iteration;
             }
 
-            std::vector<std::vector<std::vector<double>>> totalWeightGradient;
+            int counter = 0; // Too lazy to rewrite into for loop
             for (auto layer : weights)
             {
                 std::vector<std::vector<double>> row;
@@ -151,170 +272,101 @@ void NeuralNetworkThreads::train(const std::vector<std::vector<double>>& trainIn
                     //row.push_back(getDoubleVector(neuron.size(), 0));
                     row.push_back(std::vector<double>(neuron.size(), 0));
                 }
-                totalWeightGradient.push_back(row);
+                totalWeightGradient[counter] = row;
+                counter++;
             }
 
-            std::vector<std::vector<double>> totalBiasGradient;
+            counter = 0; // don't judge me, I just want my threads to work. We deal with spagetti code later
             for (auto layer : biases)
             {
                 //totalBiasGradient.push_back(getDoubleVector(layer.size(), 0));
-                totalBiasGradient.push_back(std::vector<double>(layer.size(), 0));
+                totalBiasGradient[counter] = std::vector<double>(layer.size(), 0);
+                counter++;
             }
 
-            for (int batch = 0; batch < currentBatchSize; ++batch)
+            // So this is how I'm gonna do the threads. I'm gonna do the same thing as i do with batch. Calculate number of max threads based on
+            // number of propogations left in batch. Do a for loop with all the threads. And, once they're done, go to next "mini-mini-batch"
+            // of propogations
+
+            //int maxThreads = std::thread::hardware_concurrency();
+            int maxThreads = 12;
+
+            int threadBatches = ceil(float(currentBatchSize) / float(maxThreads));
+
+            std::cout << threadBatches << std::endl;
+
+            // Iterate through the number of thread loops we can fit into the current batch size
+            for (int threadBatch = 0; threadBatch < threadBatches; ++threadBatch)
             {
-
-                // Keeps track of where we are in the total dataset
-                int currentInput = (iteration * batchSize) + batch;
-
-                // First input to go into the forward pass. Named activation for ease in forward pass
-                std::vector<double> activation = trainInput[currentInput];
-                minMaxNormalizeVector(activation, .1, .9);
-
-
-                std::vector<std::vector<double>> zs; // 2D matrix to store all z's. z = weight . activation + b
-                std::vector<std::vector<double>> activations; // 2D matrix to store all activations. activation = acticationFunction(z)
-
-                // std::vector<std::vector<double>> deltas;             // debug
-
-                activations.push_back(activation);
-
-                // Forward pass
-                // Start with hidden layers
-                for (int i = 0; i < hiddenLayerCount; ++i)
+                int currentMaxThreads = maxThreads;
+                if (maxThreads * threadBatch + maxThreads > currentBatchSize)
                 {
-                    std::vector<double> z = vectorAdd(vectorMatrixMult(weights[i], activation), biases[i]);
-                    //normalizeVector(z);
-                    //minMaxNormalizeVector(z);
-                    zs.push_back(z);
-                    //std::vector<double> newActivation = sigmoid(z);
-                    activation = relu(z);
-                    minMaxNormalizeVector(activation, .1, .9);
-                    activations.push_back(activation);
+                    currentMaxThreads = currentBatchSize - (maxThreads * threadBatch);
                 }
 
+                std::vector<std::thread> t;
+                int c = 0;
 
-
-                // Output layer needs different activation function for binary classification (mnist)
-                std::vector<double> z = vectorAdd(vectorMatrixMult(weights[totalLayerCount - 1], activation), biases[totalLayerCount - 1]);
-                // There is a significant decrease in learning when you normalize last z. DON'T
-                zs.push_back(z);
-                // Output layer activation function goes here
-                activation = SoftMax(z);
-                //std::vector<double> newActivation = relu(z);
-                activations.push_back(activation);
-
-                // Back pass
-                // Get correct vector
-
-                std::vector<double> y;
-                for (int i = 0; i < targetCount; ++i)
+                // Iterate through all the threads in the threadBatch, and start the backpropogation. Then join them all
+                for (int thread = 0; thread < currentMaxThreads; ++thread)
                 {
-                    if (i == trainLabel[currentInput])
-                    {
-                        y.push_back(1);
-                    }
-                    else
-                    {
-                        y.push_back(0);
-                    }
+                    // Keeps track of where we are in the total dataset
+                    int currentInput = (iteration * batchSize) + (threadBatch * maxThreads) + thread;
+
+                    std::cout << "Thread " << c << std::endl;
+                    t.push_back(std::thread(&NeuralNetworkThreads::BackPropogate, this, trainInput[currentInput], trainLabel[currentInput]));
+                    c++;
                 }
 
-                // delta = costDerivative(a(L) - y)*activationDerivative(z(L))
-                // dC/db = costDerivative(a(L) - y)*activationDerivative(z(L))
-                // dC/dw = a(L-1)*costDerivative(a(L) - y)*activationDerivative(z(L))
-
-                // Using cross entropy loss and softmax for output
-                double cost = crossEntropyLoss(activations[activations.size() - 1], y);
-                costs.push_back(cost);
-
-                // Use this for MSE and sigmoid output
-                // std::vector<double> delta = hadamardVector(MSElossDerivative(activations[activations.size() - 1], y), sigmoidPrime(zs[zs.size() - 1]));
-
-                // Use this for MSE and relu output
-                // std::vector<double> delta = hadamardVector(costDerivative(activations[activations.size() - 1], y), reluPrime(zs[zs.size() - 1]));
-
-                // Use this for softmax and cross entropy
-
-                std::vector<double> delta = vectorSubtract(activations[activations.size() - 1], y);
-                gradientb[gradientb.size() - 1] = delta;
-
-                // deltas.push_back(delta);
-
-                gradientw[gradientw.size() - 1] = vectorTransposeMult(delta, activations[activations.size() - 2]);
-
-                for (int i = 2; i < totalLayerCount + 1; ++i)
+                for (size_t i = 0; i < currentMaxThreads; ++i)
                 {
-                    std::vector<double> z = zs[zs.size() - i];
-                    //std::vector<double> sp = sigmoidPrime(z);
-                    std::vector<double> sp = reluPrime(z);
-
-                    delta = hadamardVector(vectorMatrixMult(matrixTranspose(weights[weights.size() - i + 1]), delta), sp);
-
-                    gradientb[gradientb.size() - i] = delta;
-                    gradientw[gradientw.size() - i] = vectorTransposeMult(delta, activations[activations.size() - i - 1]);
-                    // deltas.push_back(delta);
+                    t[i].join();
                 }
+            }
 
-
-                // Update the total gradients per batch
-                for (int i = 0; i < int(totalBiasGradient.size()); ++i)
+            std::thread normalizeAndUpdateWeights([this, &eta]
                 {
-                    for (int j = 0; j < int(totalBiasGradient[i].size()); ++j)
+                    for (int i = 0; i < int(totalWeightGradient.size()); ++i)
                     {
-                        totalBiasGradient[i][j] += gradientb[i][j];
-                    }
-                }
-
-                for (int i = 0; i < int(totalWeightGradient.size()); ++i)
-                {
-                    for (int j = 0; j < int(totalWeightGradient[i].size()); ++j)
-                    {
-                        for (int h = 0; h < int(totalWeightGradient[i][j].size()); ++h)
+                        for (int j = 0; j < int(totalWeightGradient[i].size()); ++j)
                         {
-                            totalWeightGradient[i][j][h] += gradientw[i][j][h];
+                            totalWeightGradient[i][j] = hadamardVector(totalWeightGradient[i][j], std::vector<double>(totalWeightGradient[i][j].size(), (1.0 / currentBatchSize)));
+                            normalizeVector(totalWeightGradient[i][j]);
                         }
                     }
-                }
 
-
-            }
-
-            // Normalize the total gradient vectors in a wjole batch
-            for (int i = 0; i < int(totalBiasGradient.size()); ++i)
-            {
-                totalBiasGradient[i] = hadamardVector(totalBiasGradient[i], std::vector<double>(totalBiasGradient[i].size(), (1.0 / currentBatchSize)));
-                normalizeVector(totalBiasGradient[i]);
-            }
-
-            for (int i = 0; i < int(totalWeightGradient.size()); ++i)
-            {
-                for (int j = 0; j < int(totalWeightGradient[i].size()); ++j)
-                {
-                    totalWeightGradient[i][j] = hadamardVector(totalWeightGradient[i][j], std::vector<double>(totalWeightGradient[i][j].size(), (1.0 / currentBatchSize)));
-                    normalizeVector(totalWeightGradient[i][j]);
-                }
-            }
-
-            // Update the weights and biases: new = old - stepSize*biasGradient
-            for (int i = 0; i < int(biases.size()); ++i)
-            {
-                for (int j = 0; j < int(biases[i].size()); ++j)
-                {
-                    biases.at(i).at(j) -= eta * totalBiasGradient[i][j];
-                }
-            }
-
-            for (int i = 0; i < int(weights.size()); ++i)
-            {
-                for (int j = 0; j < int(weights[i].size()); ++j)
-                {
-                    for (int h = 0; h < int(weights[i][j].size()); ++h)
+                    for (int i = 0; i < int(weights.size()); ++i)
                     {
-                        weights[i][j][h] = weights[i][j][h] - eta * totalWeightGradient[i][j][h];
+                        for (int j = 0; j < int(weights[i].size()); ++j)
+                        {
+                            for (int h = 0; h < int(weights[i][j].size()); ++h)
+                            {
+                                weights[i][j][h] = weights[i][j][h] - eta * totalWeightGradient[i][j][h];
+                            }
+                        }
                     }
-                }
-            }
+                });
+
+            std::thread normalizeAndUpdateBias([this, &eta]
+                {
+                    for (int i = 0; i < int(totalBiasGradient.size()); ++i)
+                    {
+                        totalBiasGradient[i] = hadamardVector(totalBiasGradient[i], std::vector<double>(totalBiasGradient[i].size(), (1.0 / currentBatchSize)));
+                        normalizeVector(totalBiasGradient[i]);
+                    }
+
+                    for (int i = 0; i < int(biases.size()); ++i)
+                    {
+                        for (int j = 0; j < int(biases[i].size()); ++j)
+                        {
+                            biases.at(i).at(j) -= eta * totalBiasGradient[i][j];
+                        }
+                    }
+                });
+           
+            normalizeAndUpdateWeights.join();
+            normalizeAndUpdateBias.join();
+            
 
             double realCost = 0;
             for (auto val : costs)

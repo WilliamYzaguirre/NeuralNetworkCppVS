@@ -8,6 +8,9 @@
 #include <algorithm>
 #include <cstdlib>
 #include <ctime>
+#include <memory>
+#include <thread>
+#include <mutex>
 
 class NeuralNetworkThreads
 {
@@ -15,6 +18,8 @@ public:
     NeuralNetworkThreads(int hiddenLayerCount, int neuronCount, int targetCount, int inputCount);
 
     ~NeuralNetworkThreads();
+
+    void BackPropogate(std::vector<double> activation, double label);
 
     std::vector<double> getRandomDoubleVector(int count, double high);
 
@@ -33,8 +38,15 @@ public:
 private:
     std::vector<std::vector<double>> biases;
     std::vector<std::vector<std::vector<double>>> weights;
+
     std::vector<std::vector<double>> gradientb;
     std::vector<std::vector<std::vector<double>>> gradientw;
+
+    std::vector<std::vector<std::vector<double>>> totalWeightGradient;
+    std::vector<std::vector<double>> totalBiasGradient;
+
+    std::vector<double> costs;
+
 
     int hiddenLayerCount;
     int neuronCount;
@@ -45,5 +57,7 @@ private:
     int currentBatchSize;
 
     int totalLayerCount;
+
+    std::mutex mux;
 };
 
